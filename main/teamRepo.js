@@ -182,9 +182,15 @@ async function syncTeamRepo(
 
           for (let i = ruleIndex + 1; i < root.nodes.length; i++) {
             const rule = root.nodes[i];
-            if (rule.type !== 'rule' || rule.selector?.startsWith(sel)) {
+            if (rule.selector?.startsWith(sel)) {
               adjacentRules.push(rule);
-            } else break;
+            } else if (rule.type !== 'rule')
+            {
+              adjacentRules.push (rule);
+              if (rule.name === 'media')
+                adjacentRules.push (...rule.nodes);
+            }
+              else break;
           }
 
           if (hash && (!fork || fork === hash)) {
@@ -253,7 +259,7 @@ async function syncTeamRepo(
       const root = postcss.parse(css, { from: teamCssPath });
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
-      const extracted = [];
+      let extracted = [];
       const scopeClass = scopeSelector.slice(1);
       const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
       let scopeRegex;
@@ -265,32 +271,38 @@ async function syncTeamRepo(
         // Replace first occurrence with .baseClass, all others with ""
         scopeRegex = makeScopeRegexFirstThenEmpty(scopeSelector);
       }
-      const keyframesArr = [];
+
       adjacentRules.forEach((rule) => {
-        let isKeyframes =
-          rule.parent?.type === 'atrule' && rule.parent.name === 'keyframes';
+        const isKeyframes =
+          rule.name === 'keyframes';
 
-        if (isKeyframes) {
-          if (keyframesArr.includes(rule.parent)) return;
+          const isMedia = !isKeyframes && rule.name === 'media';
 
-          if (rule.parent.params.startsWith(`${className}__`)) {
-            const spl = rule.parent.params.split('__');
-            rule.parent.params = spl[spl.length - 1];
+          if (isKeyframes)
+          {
+            const oldName = rule.params;
+            const newName = oldName.split ('__').at (-1);
+            rule.params = newName;
 
-            rule.walkDecls('animation', (decl) => {
-              if (decl.value.startsWith(`${className}__`)) {
-                const spl = decl.value.split('__');
-                decl.value = spl[spl.length - 1];
+            // Then update all usages of this animation name in declarations:
+            adjacentRules.forEach (rule => rule.walkDecls((decl) => {
+              // Check if decl contains animation or animation-name
+              if (
+                decl.prop === 'animation-name' ||
+                decl.prop === 'animation' // animation shorthand includes name
+              ) {
+                // Replace oldName with newName in the value
+                decl.value = decl.value.replace(
+                  new RegExp(`\\b${oldName}\\b`, 'g'),
+                  newName
+                );
               }
-            });
-            rule.walkDecls('animation-name', (decl) => {
-              if (decl.value.startsWith(`${scopeSelector}__`)) {
-                const spl = decl.value.split('__');
-                decl.value = spl[spl.length - 1];
-              }
-            });
-            extracted.push(rule.parent);
-          }
+          }));
+        extracted.push (rule);
+          return;
+        } else if (isMedia)
+        {
+          extracted.push (rule);
           return;
         }
 
@@ -335,13 +347,10 @@ async function syncTeamRepo(
 
         rule.selector = newSelector;
 
-        if (rule.parent?.type === 'atrule' && rule.parent.name === 'media') {
-          if (!extracted.includes(rule)) extracted.push(rule.parent);
-          return;
-        }
-
-        extracted.push(rule);
+        if (!(rule.parent?.type === 'atrule' && rule.parent.name === 'media')) 
+          extracted.push(rule);
       });
+      extracted = extracted.map (e => e.name === 'media' ? e.clone() : e);
 
       if (extracted.length === 0) continue;
 
