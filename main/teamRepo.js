@@ -38,7 +38,7 @@ async function syncTeamRepo(
 ) {
   //Backup
   await git.add('.');
-  await git.commit('Pre-sync');
+  await git.commit('Pre-sync backup', [], { '--allow-empty': null });
 
   state.resolveClses = strip;
 
@@ -132,7 +132,7 @@ async function syncTeamRepo(
       };
 
       // Rebuild selector joining parts with spaces
-      selector = parts.map(prefixWithDot).join(' ');
+      selector = parts.slice(1).map(prefixWithDot).join(' ');
     } else {
       // If no '__' splitting, just prefix dot if not present and not combinator
       if (
