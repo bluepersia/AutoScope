@@ -1,6 +1,6 @@
 ![Tool Logo](./assets/logo.jpg)
 
-Welcome to AutoScope compiler for CSS, HTML and React!
+Welcome to AutoScope compiler for CSS and HTML (React is in the works)!
 
 The aim of this tool:
 
@@ -9,9 +9,11 @@ The aim of this tool:
 
 Regardless of whether you write Vanilla classes or BEM.
 
+## 🛡️ How It Works
+
 When collisions are detected during compilation, AutoScope automatically adds a suffix to class names (either a short hash or a number, based on your config) — no manual renaming needed.
 
-If you write Vanilla classes, such as
+For example, if you write unscoped (Vanilla) classes like this:
 
 ```html
 <article class="recipe-card">
@@ -32,7 +34,7 @@ If you write Vanilla classes, such as
 </article>
 ```
 
-If dontFlatten is set to false, AutoScope will convert nested classes into a flat BEM-style structure, using the outer block name as a prefix.
+If `dontFlatten` is set to false, AutoScope will convert nested classes into a flat BEM-style structure, using the outer block name as a prefix.
 
 ```html
 <article class="recipe-card-2">
@@ -55,7 +57,7 @@ If dontFlatten is set to false, AutoScope will convert nested classes into a fla
 
 Suffix + flattening resolves the collision.
 
-Likewise, if you write BEM with dontFlatten set to true, you can write:
+Likewise, if you write BEM with `dontFlatten` set to true, you can write:
 
 ```html
 <article class="recipe-card">
@@ -87,3 +89,19 @@ or if set to hash:
 ```html
 <article class="recipe-card-c53df3"></article>
 ```
+
+## ⚙️ Config Options
+
+| Option            | Type            | Default  | Description                                           |
+| ----------------- | --------------- | -------- | ----------------------------------------------------- |
+| `inputDir`        | string          | `'src'`  | The directory to compile from                         |
+| `outputDir`       | string          | `'dist'` | The directory to compile to                           |
+| `dontFlatten`     | boolean         | `false`  | Flatten nested classes into BEM-style names           |
+| `useNumbers`      | boolean         | `true`   | Use number suffixes instead of hashes                 |
+| `dontHashFirst`   | boolean         | `true`   | Do not suffix the first occurence                     |
+| `writeRuntimeMap` | string/boolean  | `false`  | Filepath for runtime JSON needed for HTML-in-JS       |
+| `teamRepo`        | string/boolean  | `false`  | Scan a directory for conflicts (for private use)      |
+| `mergeCss`        | string/boolean  | `false`  | Merge all the CSS into one file                       |
+| `copyFiles`       | string/bool/arr | `false`  | Copy directory content to the output dir, as they are |
+| `globalCss`       | glob/globs      | ``       | Files to exclude from scoping (for global styles)     |
+| `flattenCombis`   | array/boolean   | `[]`     | Flatten combis, e.g. from > to _a_                    |
