@@ -345,23 +345,27 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
               if (chain.length <= 1)
                 return replaceDoubleUnderscoreInString(
-                  replaceDotsExceptFirst(flat)
+                  replaceDotsExceptFirst(
+                    flat.replace(`.${fileName}`, `.${selectorsObj.hashedName}`)
+                  )
                 );
 
               chain = chain.map((seg) => replaceDotsExceptFirst(seg));
 
               let flatChain = replaceDoubleUnderscoreInArray(
-                chain.map((seg, index) =>
-                  stripSpaces(
-                    index === 0
-                      ? seg
-                      : replaceDotsExceptFirst(
-                          state.allCombisKeys.includes(seg)
-                            ? seg
-                            : `.${selectorsObj.hashedName}__${seg}`
-                        )
-                  )
-                )
+                chain.map((seg, index) => {
+                  if (!state.allCombisKeys.includes(seg))
+                    seg =
+                      index === 0
+                        ? seg.replace(
+                            `.${fileName}`,
+                            `.${selectorsObj.hashedName}`
+                          )
+                        : `.${selectorsObj.hashedName}__${seg}`;
+                  return stripSpaces(
+                    index === 0 ? seg : replaceDotsExceptFirst(seg)
+                  );
+                })
               );
 
               chain = chain.map((seg) => removeCombinators(seg));
@@ -374,16 +378,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
               };
             }
 
-            const hashedSelector = selector.replaceAll(
-              `.${fileName}`,
-              `.${selectorsObj.hashedName}`
-            );
-
             const selectorObj = { raw: selector };
-            let flat = hashedSelector;
+            let flat;
 
             if (!localConfig.dontFlatten) {
-              let fullFlattened = flatten(hashedSelector);
+              let fullFlattened = flatten(selector);
               if (typeof fullFlattened === 'object') {
                 flat = fullFlattened.flat;
                 selectorObj.flat = fullFlattened;
@@ -394,7 +393,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                   stripPseudoSelectors(fullFlattened)
                 );
               }
+            } else {
+              flat = selector.replaceAll(
+                `.${fileName}`,
+                `.${selectorsObj.hashedName}`
+              );
             }
+
             selectorsObj.selectors.push(selectorObj);
 
             rule.selector.push(flat);
@@ -865,20 +870,30 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                   .selectAll(stripPseudoSelectors(raw), [scopeNode])
                   .filter((node) => !isDescendantOf(node, nestedScopeNodes));
 
+                console.log(raw, flat);
+
                 matches.forEach((match) => {
                   function processPseudoNode(node, i = flat.chain.length - 1) {
+                    while (state.allCombisKeys.includes(flat.chain[i])) i--;
+
                     const segment = flat.chain[i].split(':')[0];
                     const segmentParts = segment.split('__');
                     const finalPart = segmentParts[segmentParts.length - 1];
+
                     const flatSeg = flat.flatChain[i];
-
+                    console.log(
+                      node.name,
+                      node.attribs?.class || '',
+                      finalPart
+                    );
                     if (cssSelect.is(node, finalPart)) {
-                      i--;
-
+                      console.log('yes');
                       if (!node.attribs.flatClasses)
                         node.attribs.flatClasses = [];
 
                       node.attribs.flatClasses.push(flatSeg);
+
+                      i--;
                     }
 
                     if (i < 0) return;
