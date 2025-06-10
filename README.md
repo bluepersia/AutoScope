@@ -187,4 +187,4 @@ Use this when a collision has occured in the team repo to reset the suffix.
 | `mergeCss`        | string/boolean  | `false`  | Merge all the CSS into one file                       |
 | `copyFiles`       | string/bool/arr | `false`  | Copy directory content to the output dir, as they are |
 | `globalCss`       | glob/globs      | ``       | Files to exclude from scoping (for global styles)     |
-| `flattenCombis`   | array/boolean   | `[]`     | Flatten combis, e.g. from > to _a_                    |
+| `flattenCombis`   | array/boolean   | `[]`     | Flatten combinators, e.g. from > to _a_               |
