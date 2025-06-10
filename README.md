@@ -9,7 +9,7 @@ The aim of this tool:
 
 Regardless of whether you write Vanilla classes or BEM.
 
-If any collisions occur during compilation, they will be resolved by an automatic suffix in your code (either hash or number).
+When collisions are detected during compilation, AutoScope automatically adds a suffix to class names (either a short hash or a number, based on your config) — no manual renaming needed.
 
 If you write Vanilla classes, such as
 
@@ -32,7 +32,7 @@ If you write Vanilla classes, such as
 </article>
 ```
 
-If dontFlatten is set to false in your config, AutoScope will automatically flatten the code:
+If dontFlatten is set to false, AutoScope will convert nested classes into a flat BEM-style structure, using the outer block name as a prefix.
 
 ```html
 <article class="recipe-card-2">
