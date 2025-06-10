@@ -90,6 +90,46 @@ or if set to hash:
 <article class="recipe-card-c53df3"></article>
 ```
 
+## 🛠️ How To Use
+
+### 🧬 CSS
+
+Each CSS file in `inputDir` gets treated as its own scope. The filename is the scope name. Think of it as a block or module.
+If your selectors do not start with the filename, the scope name will automatically be prepended to your selectors.
+So instead of writing
+
+```css
+.recipe-card {
+}
+.recipe-card .title {
+}
+.recipe-card .img {
+}
+```
+
+You can write
+
+```css
+.recipe-card {
+}
+.title {
+}
+.img {
+}
+```
+
+### 🌐 HTML
+
+Import your modules via:
+
+```html
+<meta name="auto-scope" content="./css/recipe-card.css" />
+```
+
+### 🧱🎨
+
+During compilation, your HTML and CSS will be uniquely scoped automatically, and the CSS and HTML converted to the scoped versions.
+
 ## ⚙️ Config Options
 
 | Option            | Type            | Default  | Description                                           |
