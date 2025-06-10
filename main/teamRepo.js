@@ -108,42 +108,46 @@ async function syncTeamRepo(
         selector = selector.replace(entry, ` ${key} .`);
       }
     }
+    const segs = selector.split(' ');
 
-    // If selector contains '__', split by '__' and join with spaces
-    if (selector.includes('__')) {
-      // Split selector on '__' and trim each part
-      const parts = selector.split('__').map((s) => s.trim());
+    for (let [index, seg] of segs.entries()) {
+      // If selector contains '__', split by '__' and join with spaces
+      if (seg.includes('__')) {
+        // Split selector on '__' and trim each part
+        const parts = seg.split('__').map((s) => s.trim());
 
-      // Prefix every part that is not a combinator or special char with dot (.)
-      // We only want to prefix class selectors, not combinators or element selectors
-      // We can assume combinators contain spaces or special chars like *, >, +, etc
+        // Prefix every part that is not a combinator or special char with dot (.)
+        // We only want to prefix class selectors, not combinators or element selectors
+        // We can assume combinators contain spaces or special chars like *, >, +, etc
 
-      const prefixWithDot = (part) => {
-        // If part already starts with a dot or special combinator char, keep as is
+        const prefixWithDot = (part) => {
+          // If part already starts with a dot or special combinator char, keep as is
+          if (
+            part.startsWith('.') ||
+            ['*', '>', '+', '~', ',', '|'].some((ch) => part.startsWith(ch)) ||
+            part === ''
+          ) {
+            return part;
+          }
+          // Otherwise, prefix dot
+          return '.' + part;
+        };
+
+        // Rebuild selector joining parts with spaces
+        seg = parts.slice(1).map(prefixWithDot).join(' ');
+      } else {
+        // If no '__' splitting, just prefix dot if not present and not combinator
         if (
-          part.startsWith('.') ||
-          ['*', '>', '+', '~', ',', '|'].some((ch) => part.startsWith(ch)) ||
-          part === ''
+          !seg.startsWith('.') &&
+          !['*', '>', '+', '~', ',', '|'].some((ch) => seg.startsWith(ch))
         ) {
-          return part;
+          seg = '.' + seg;
         }
-        // Otherwise, prefix dot
-        return '.' + part;
-      };
-
-      // Rebuild selector joining parts with spaces
-      selector = parts.slice(1).map(prefixWithDot).join(' ');
-    } else {
-      // If no '__' splitting, just prefix dot if not present and not combinator
-      if (
-        !selector.startsWith('.') &&
-        !['*', '>', '+', '~', ',', '|'].some((ch) => selector.startsWith(ch))
-      ) {
-        selector = '.' + selector;
       }
-    }
 
-    return selector;
+      segs[index] = seg;
+    }
+    return segs.join(' ');
   }
 
   async function readAndWriteCss() {
