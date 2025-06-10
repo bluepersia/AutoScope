@@ -1,1 +1,1 @@
-![Tool Logo](./assets/logo.png)
+![Tool Logo](./assets/logo.jpg)
