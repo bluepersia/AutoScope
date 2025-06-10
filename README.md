@@ -1,6 +1,6 @@
 ![Tool Logo](./assets/logo.jpg)
 
-Welcome to AutoScope for CSS, HTML and React!
+Welcome to AutoScope compiler for CSS, HTML and React!
 
 The aim of this tool:
 
@@ -8,6 +8,9 @@ The aim of this tool:
 2. For private adoption, reduce collision problems.
 
 Regardless of whether you write Vanilla classes or BEM.
+
+If any collisions occur during compilation, they will be resolved by an automatic suffix in your code (either hash or number).
+
 If you write Vanilla classes, such as
 
 ```html
@@ -27,4 +30,60 @@ If you write Vanilla classes, such as
     and vanilla. Beat well. Bake for 30-35 minutes.
   </p>
 </article>
+```
+
+If dontFlatten is set to false in your config, AutoScope will automatically flatten the code:
+
+```html
+<article class="recipe-card-2">
+  <h3 class="recipe-card-2__title">Chocolate Cake Recipe</h3>
+  <p class="recipe-card-2__desc">
+    This rich and moist chocolate cake is perfect for celebrations or just a
+    treat to satisfy your sweet tooth. Easy to bake and delicious to eat!
+  </p>
+  <ul class="recipe-card-2__ingredients">
+    <li>2 cups flour</li>
+    <li>1 ¾ cups sugar</li>
+    <li>¾ cup cocoa powder</li>
+  </ul>
+  <p class="recipe-card-2__instructions">
+    Preheat the oven to 350°F (175°C). Mix dry ingredients. Add eggs, milk, oil,
+    and vanilla. Beat well. Bake for 30-35 minutes.
+  </p>
+</article>
+```
+
+Suffix + flattening resolves the collision.
+
+Likewise, if you write BEM with dontFlatten set to true, you can write:
+
+```html
+<article class="recipe-card">
+  <h3 class="recipe-card__title">Chocolate Cake Recipe</h3>
+  <p class="recipe-card__desc">
+    This rich and moist chocolate cake is perfect for celebrations or just a
+    treat to satisfy your sweet tooth. Easy to bake and delicious to eat!
+  </p>
+  <ul class="recipe-card__ingredients">
+    <li>2 cups flour</li>
+    <li>1 ¾ cups sugar</li>
+    <li>¾ cup cocoa powder</li>
+  </ul>
+  <p class="recipe-card__instructions">
+    Preheat the oven to 350°F (175°C). Mix dry ingredients. Add eggs, milk, oil,
+    and vanilla. Beat well. Bake for 30-35 minutes.
+  </p>
+</article>
+```
+
+And if a collision is detected, it resolves again to
+
+```html
+<article class="recipe-card-2"></article>
+```
+
+or if set to hash:
+
+```html
+<article class="recipe-card-c53df3"></article>
 ```
