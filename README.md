@@ -165,7 +165,7 @@ Downloads the team repo back to your local content. Use this command before gett
 #### 🔃 npx pull
 
 Pulls and merges from the master branch. Requires you to be on a different branch.
-**Important:** npx pull ensures scoped classnames remain consistent during merges. Manual Git pulls may skip conflict resolution steps unique to AutoScope, leading to incorrect scoping.
+**Important:** npx pull ensures that colliding class names do not get committed and auto-resolves. Manual Git pulls may skip conflict resolution steps unique to AutoScope, leading to incorrect scoping.
 **Always use this instead of manual Git pulls**
 
 #### 🎯 npx resolve --name <class name>
