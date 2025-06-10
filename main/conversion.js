@@ -320,6 +320,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
             rulesArr.push(atRule);
             return;
+          } else if (
+            rule.parent?.type === 'atrule' &&
+            rule.parent.name === 'media'
+          ) {
+            if (rulesArr.includes(rule.parent)) return;
+
+            const atRule = rule.parent;
+            rulesArr.push(atRule.clone());
+            return;
           }
 
           function processSelector(rule, selector) {
@@ -411,14 +420,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
           rule.selector = rule.selector.join(', ');
 
-          if (rule.parent?.type === 'atrule' && rule.parent.name === 'media') {
-            if (!rulesArr.includes(rule.parent)) rulesArr.push(rule.parent);
-            return;
-          }
-
-          rulesArr.push(rule);
+          if (!(rule.parent?.type === 'atrule' && rule.parent.name === 'media'))
+            rulesArr.push(rule);
         });
-
         /*
           if (scanIDs)
           {
@@ -486,20 +490,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             if (rule.selector?.startsWith(targetClass))
               rulesToRemove.push(rule);
             else break;
-          } else if (
-            rule.parent?.type === 'atrule' &&
-            rule.parent.name === 'media'
-          )
-            rulesToRemove.push(rule);
+          } else if (rule.type === 'atrule') rulesToRemove.push(rule);
         }
-
-        root.walkAtRules('keyframes', (atRule) => {
-          if (
-            atRule.params.startsWith(`${targetClass.replaceAll('.', '')}__`)
-          ) {
-            rulesToRemove.push(atRule);
-          }
-        });
 
         // Step 3: Insert new rules before removing the old ones
         const insertNodes = rulesArr;
@@ -523,9 +515,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
         rulesToRemove.forEach((rule) => rule.remove());
 
         // Step 5: Clean up empty media queries
-        root.walkAtRules('media', (atRule) => {
+        /*root.walkAtRules('media', (atRule) => {
           if (atRule.nodes.length <= 0) atRule.remove();
-        });
+        });*/
       }
     }
 
