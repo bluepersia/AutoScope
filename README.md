@@ -126,9 +126,31 @@ Import your modules via:
 <meta name="auto-scope" content="./css/recipe-card.css" />
 ```
 
-### 🧱🎨
+### 🧱🎨 Compilation
 
 During compilation, your HTML and CSS will be uniquely scoped automatically, and the CSS and HTML converted to the scoped versions.
+
+### 🔒 Private Use (without team-wide adoption)
+
+#### 🗂️ Organization
+
+Set up your `inputDir` separate from the project repo, e.g. `'mySrc'`. Set `teamRepo` to the project repo, e.g. `'src'`.
+Set `outputDir` to either:
+
+1. Another folder, e.g. '`myDist`'
+2. The team repo itself (use at own risk. The micro tests passed, but the build is constantly overwriting files again)
+
+#### 🧹 Formatters
+
+Ideally, the team should agree on certain code formatter/s to reduce Git conflicts.
+AutoScope currently supports:
+
+1. Prettier: `prettierConfig`
+2. ESLint: `ESLintConfig`
+3. Stylelint: `stylelintConfig`
+
+Install the node package of the formatter.
+Each formatter uses the config structure of the respective node package.
 
 ## ⚙️ Config Options
 

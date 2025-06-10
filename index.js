@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'fs';
 import path from 'path';
-import {globby} from 'globby';
+import { globby } from 'globby';
 import fsExtra from 'fs-extra';
 import http from 'http';
 import postcss from 'postcss';
@@ -23,34 +23,31 @@ import { pathToFileURL } from 'url';
 import { createRequire } from 'module';
 
 let prettier;
-let ESLint; 
+let ESLint;
 let stylelint;
 
-  const require = createRequire(pathToFileURL(path.join(process.cwd(), 'index.js')).href);
-  try {
+const require = createRequire(
+  pathToFileURL(path.join(process.cwd(), 'index.js')).href
+);
+try {
   prettier = require('prettier');
-  } catch {}
-  try {
-    ESLint = require ('eslint')?.ESLint;
-  } catch {}
-  try {
-    stylelint = require ('stylelint');
-  }catch {}
+} catch {}
+try {
+  ESLint = require('eslint')?.ESLint;
+} catch {}
+try {
+  stylelint = require('stylelint');
+} catch {}
 
 async function init(newConfig, runtimeMp, devMd = false) {
-
   if (newConfig === state.config) return state.config;
 
   state.config = { ...state.config, ...newConfig };
 
-
   state.devMode = devMd;
 
-
-  
   state.config.initOutputDir = state.config.outputDir;
   if (devMd) {
-    
     state.config.outputDir = 'dev-temp';
   }
 
@@ -64,8 +61,6 @@ async function init(newConfig, runtimeMp, devMd = false) {
   if (state.config.copyFiles === true)
     state.config.copyFiles = state.config.teamRepo || state.config.inputDir;
 
-
-  
   //if (state.config.globalCss)
   //state.globalCss = prefixGlobsWithDir (state.config.globalCss, state.inputDir);
 
@@ -76,7 +71,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
   state.mergeCssMap = {};
 
   initCombinatorFlattening(state.config);
-  initFormatters ();
+  initFormatters();
 
   if (runtimeMp) state.runtimeMap = runtimeMp;
 
@@ -97,7 +92,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
   }*/
 
   await initInputHtml(state.config);
-  await initInputReact (state.config);
+  await initInputReact(state.config);
 
   return state.config;
 }
@@ -122,76 +117,88 @@ async function startUp ()
 
 }*/
 
-
-function initFormatters ()
-{
+function initFormatters() {
   state.config.prettierConfig = state.config.prettierConfig || {};
   state.config.ESLintConfig = state.config.ESLintConfig || {};
-  state.config.styleLintConfig = state.config.styleLintConfig || {};
+  state.config.stylelintConfig = state.config.stylelintConfig || {};
 
   if (stylelint)
-    state.cssFormatter = async (input) => await stylelint.lint({ code: input, config: state.config.stylelintConfig, fix:true })
+    state.cssFormatter = async (input) =>
+      await stylelint.lint({
+        code: input,
+        config: state.config.stylelintConfig,
+        fix: true,
+      });
   else if (prettier)
-    state.cssFormatter = async (input) => await prettier.format(input, {parser:'css', ...state.config.prettierConfig});
-  else 
-    state.cssFormatter = async input => input;
+    state.cssFormatter = async (input) =>
+      await prettier.format(input, {
+        parser: 'css',
+        ...state.config.prettierConfig,
+      });
+  else state.cssFormatter = async (input) => input;
 
-    if (ESLint)
-    {
-      const eslint = new ESLint ({
-        baseConfig: state.config.ESLintConfig,
-        fix:true
-      })
-      state.jsFormatter = async input => await eslint.lintText (input);
-    }
-    else if (prettier) 
-    {
-      state.jsFormatter = async input => await prettier.format (input, {parser:'babel', ...state.config.prettierConfig})
-      state.tsFormatter = async input => await prettier.format (input, {parser:'babel-ts', ...state.config.prettierConfig})
-    }
-    else 
-    {
-      state.jsFormatter = async input => input;
-      state.tsFormatter = state.jsFormatter;
-    }
-      
-    state.htmlFormatter = prettier ? async input => { console.log ('prettier'); return await prettier.format (input, {parser: 'html', ...state.config.prettierConfig})} : async input => input;
+  if (ESLint) {
+    const eslint = new ESLint({
+      baseConfig: state.config.ESLintConfig,
+      fix: true,
+    });
+    state.jsFormatter = async (input) => await eslint.lintText(input);
+  } else if (prettier) {
+    state.jsFormatter = async (input) =>
+      await prettier.format(input, {
+        parser: 'babel',
+        ...state.config.prettierConfig,
+      });
+    state.tsFormatter = async (input) =>
+      await prettier.format(input, {
+        parser: 'babel-ts',
+        ...state.config.prettierConfig,
+      });
+  } else {
+    state.jsFormatter = async (input) => input;
+    state.tsFormatter = state.jsFormatter;
+  }
+
+  state.htmlFormatter = prettier
+    ? async (input) => {
+        console.log('prettier');
+        return await prettier.format(input, {
+          parser: 'html',
+          ...state.config.prettierConfig,
+        });
+      }
+    : async (input) => input;
 }
-
 
 async function initTeamRepoHashMap() {
   const cssFiles = await globby(state.config.teamRepo);
 
   state.teamRepoHashMap = {};
 
-
   for (const cssFile of cssFiles) {
     const css = await fs.promises.readFile(cssFile, 'utf-8');
 
     if (css.includes('--scope-hash:')) {
-      { 
-        const {root} = await postcss()
-        .process(css, { from: undefined })
+      {
+        const { root } = await postcss().process(css, { from: undefined });
 
-          root.walkDecls((decl) => {
-            if (decl.prop === '--scope-hash') {
-              const filePath = 
-                path.relative(state.config.teamRepo, cssFile);
-             
-              state.teamRepoHashMap[
-                decl.parent.selector
-                  .split(',')[0]
-                  .trim()
-                  .replaceAll('.', '')
-                  .replace(/-\w+$/, '') +
-                  '/' +
-                  decl.value.split(' ')[0].trim()
-              ] = { cssRoot: root, filePath };
-              
-            }
-          });
+        root.walkDecls((decl) => {
+          if (decl.prop === '--scope-hash') {
+            const filePath = path.relative(state.config.teamRepo, cssFile);
+
+            state.teamRepoHashMap[
+              decl.parent.selector
+                .split(',')[0]
+                .trim()
+                .replaceAll('.', '')
+                .replace(/-\w+$/, '') +
+                '/' +
+                decl.value.split(' ')[0].trim()
+            ] = { cssRoot: root, filePath };
+          }
+        });
+      }
     }
-  }
   }
 }
 
@@ -221,14 +228,13 @@ async function checkDevMode(cb = () => {}) {
   } finally {
   }
 }
-async function initInputReact (config)
-{
-  const inputDirReact = [`${config.inputDir}/**/*.jsx`, `${config.inputDir}/**/*.tsx`];
+async function initInputReact(config) {
+  const inputDirReact = [
+    `${config.inputDir}/**/*.jsx`,
+    `${config.inputDir}/**/*.tsx`,
+  ];
   config.inputReact = config.inputReact
-    ? prefixGlobsWithDir(
-        config.inputReact,
-        state.config.inputDir
-      )
+    ? prefixGlobsWithDir(config.inputReact, state.config.inputDir)
     : inputDirReact;
 
   config.inputReact.push(getScssFolder());
@@ -238,10 +244,7 @@ async function initInputReact (config)
 async function initInputHtml(config) {
   const inputDirHtml = `${config.inputDir}/**/*.html`;
   config.inputHtml = config.inputHtml
-    ? prefixGlobsWithDir(
-        config.inputHtml,
-        state.config.inputDir
-      )
+    ? prefixGlobsWithDir(config.inputHtml, state.config.inputDir)
     : [inputDirHtml];
 
   config.inputHtml.push(getScssFolder());
@@ -252,10 +255,7 @@ async function initInputHtml(config) {
 async function initInputCss(config) {
   const inputDirCss = `${config.inputDir}/**/*.css`;
   config.inputCss = state.config.inputCss
-    ? prefixGlobsWithDir(
-        config.inputCss,
-        state.config.inputDir
-      )
+    ? prefixGlobsWithDir(config.inputCss, state.config.inputDir)
     : [inputDirCss];
 
   config.inputCss.push(getScssFolder());
@@ -297,15 +297,15 @@ function startDevServer() {
       await build(state.config);
       res.end('Built!');
     } else if (req.url === '/read-team') {
-      await readTeamIDs ();
-      await initTeamRepoHashMap ();
+      await readTeamIDs();
+      await initTeamRepoHashMap();
 
       //await fs.promises.rm('dev-temp', { recursive: true, force: true });
       //await fsExtra.copy(state.config.teamRepo, 'dev-temp');
-      console.log ('Read team repo');
-      res.end ('Read team repo');
+      console.log('Read team repo');
+      res.end('Read team repo');
     } else if (req.url === '/resolve-build') {
-      res.end ('Resolved.');
+      res.end('Resolved.');
       let body = '';
 
       // Collect data
@@ -316,10 +316,10 @@ function startDevServer() {
       // Done receiving data
       req.on('end', async () => {
         try {
-         // const data = JSON.parse(body);
-        //  await readMetaTags(data.htmlDeps);
-        //  await writeCssAndHtml([data.filePath], data.htmlDeps);
-         // res.writeHead(200, { 'Content-Type': 'application/json' });
+          // const data = JSON.parse(body);
+          //  await readMetaTags(data.htmlDeps);
+          //  await writeCssAndHtml([data.filePath], data.htmlDeps);
+          // res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end('Resolved');
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -422,46 +422,49 @@ function getMachineTagId(length = 4) {
   return 'anon'; // Fallback if no MAC found
 }
 async function build(cfg = config, runtimeMap = null, devMode = false) {
-
   await setConfig(await init(cfg, runtimeMap, devMode));
- 
-  if (state.config.teamRepo !== state.config.outputDir)
-  {
+
+  if (state.config.teamRepo !== state.config.outputDir) {
     if (fs.existsSync(state.config.outputDir))
-      await fs.promises.rm(state.config.outputDir, { recursive: true, force: true });
+      await fs.promises.rm(state.config.outputDir, {
+        recursive: true,
+        force: true,
+      });
 
     await fs.promises.mkdir(state.config.outputDir);
   }
 
-  if (state.config.copyFiles && (!state.config.teamRepo || state.config.devMode))
-    {
-      if (Array.isArray (state.config.copyFiles))
-      {
-      state.config.copyFiles = state.config.copyFiles.filter (p => p !== state.config.outputDir);
-        for (const dir of state.config.copyFiles)
-          copyFiles (dir, state.config.outputDir);
-      } else {
-        if (state.config.copyFiles === state.config.outputDir)
-        {
-          state.config.copyFiles = '';
-          return;
-        }
-        copyFiles (state.config.copyFiles, state.config.outputDir);
+  if (
+    state.config.copyFiles &&
+    (!state.config.teamRepo || state.config.devMode)
+  ) {
+    if (Array.isArray(state.config.copyFiles)) {
+      state.config.copyFiles = state.config.copyFiles.filter(
+        (p) => p !== state.config.outputDir
+      );
+      for (const dir of state.config.copyFiles)
+        copyFiles(dir, state.config.outputDir);
+    } else {
+      if (state.config.copyFiles === state.config.outputDir) {
+        state.config.copyFiles = '';
+        return;
       }
+      copyFiles(state.config.copyFiles, state.config.outputDir);
     }
-  
-
-  
+  }
 
   if (state.config.teamRepo) await readTeamIDs();
 
   //copyGlobalCss();
 
   await readMetaTags(state.htmlFiles);
-  await writeCssAndHtml(state.cssFiles, findDomsInCache(state.htmlFiles), findDomsInCache (state.reactFiles));
+  await writeCssAndHtml(
+    state.cssFiles,
+    findDomsInCache(state.htmlFiles),
+    findDomsInCache(state.reactFiles)
+  );
 
   console.log('scoped-css-module: build complete');
-
 }
 
 function removeIdFromCache(filePath) {
@@ -567,5 +570,5 @@ export {
   copyGlobalCss,
   initTeamRepoHashMap,
   initInputReact,
-  initFormatters
+  initFormatters,
 };
