@@ -1,0 +1,174 @@
+import { findDomsInCache } from '../index.js';
+import { readMetaTags } from './readMetaTags.js';
+import {
+  state,
+  findHtmlDeps,
+  isRestFile,
+  getRelativePath,
+  removeIdFromCache,
+  prefixGlobsWithDir
+} from '../shared.js';
+import { writeCssAndHtml, readGlobalCss } from './conversion.js';
+import fs from 'fs';
+import path from 'path';
+import multimatch from 'multimatch';
+import fsExtra from 'fs-extra';
+
+async function onChange(filePaths) {
+  const { metaCache, globalCss, config } = state;
+
+  //const htmlFiles = filePaths.filter (p => fg.sync (inputHtml).includes (path.relative (process.cwd(), p)));
+  //const cssFiles = filePaths.filter (p => fg.sync (inputCss).includes (path.relative (process.cwd(), p)));
+
+  const matchFilePaths = filePaths.map((filePath) =>
+    path.relative(process.cwd(), filePath)
+  );
+
+  const htmlFiles = multimatch(matchFilePaths, config.inputHtml);
+  
+  const reactFiles = multimatch(matchFilePaths, config.inputReact);
+  let cssFiles = multimatch(matchFilePaths, config.inputCss);
+  /*
+  let cssFilesNoGlobal = cssFiles;
+  if (globalCss)
+  {
+    const globalCssFiles = multimatch (matchFilePaths, globalCss)
+    
+    if (globalCssFiles.length > 0)
+      await readGlobalCss ();
+  
+    cssFilesNoGlobal = cssFiles.filter (f => !globalCssFiles.includes (f));
+  }*/
+  //const restFiles = filePaths.filter((filePath) => isRestFile(filePath));
+  // for (const restFile of restFiles) copyFile(restFile);
+
+  const cssDeps = (await readMetaTags([...htmlFiles, ...reactFiles])).filter((filePath) =>
+    fs.existsSync(filePath)
+  );
+
+  const htmlDeps = findHtmlDeps(cssFiles);
+  const reactDeps = findHtmlDeps (cssFiles, true);
+
+  await writeCssAndHtml(
+    Array.from(new Set([...cssFiles, ...cssDeps])),
+    Array.from(new Set([...findDomsInCache(htmlFiles), ...htmlDeps])),
+    Array.from (new Set ([...findDomsInCache (reactFiles), ...reactDeps]))
+  );
+}
+
+async function copyFile(srcPath) {
+  console.log ('Copy: ', srcPath);
+  await fsExtra.copy(
+    srcPath,
+    `${state.config.outputDir}/${path.relative(
+      getOutermostDir (srcPath),
+      srcPath
+    )}`,
+    { overwrite: true }
+  );
+}
+
+async function unlinkFile(srcPath) {
+  const p = `${state.config.outputDir}/${path.relative(getOutermostDir (srcPath), srcPath)}`;
+  if (fs.existsSync(p)) await fs.promises.unlink(p);
+}
+
+function unlink(srcPath) {
+  const relativePath = getRelativePath(srcPath);
+
+  const outPath = path.join(state.config.outputDir, relativePath);
+
+  if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+}
+async function onRemove(filePaths) {
+  const { cssScopes, metaCache, domCache, metaTagMap, mergeCssMap, config } =
+    state;
+
+  const htmlFiles = filePaths.filter((file) => file.endsWith('.html'));
+  const cssFiles = filePaths.filter((file) => file.endsWith('.css'));
+
+  /*
+  let globalCssFiles = [];
+  if (globalCss)
+  {
+    globalCssFiles = multimatch (cssFiles, globalCss);
+    if (globalCssFiles.length > 0)
+      await readGlobalCss ();
+  }*/
+  //const restFiles = filePaths.filter((file) => isRestFile(file));
+
+  htmlFiles.forEach((htmlFile) => unlink(htmlFile));
+  cssFiles.forEach((cssFile) => {
+   // delete state.runtimeMap[cssFile];
+    unlink(cssFile);
+
+    for (let i = 0; i < cssScopes.length; i++) {
+      if (cssScopes[i] === path.basename(cssFile, '.css')) {
+        cssScopes.splice(i, 1);
+        break;
+      }
+    }
+  });
+
+  Object.entries(metaCache).forEach(([key, val]) => {
+    metaCache[key] = val.filter((dom) => !htmlFiles.includes(dom.filePath));
+  });
+
+  for (const htmlFile of htmlFiles) delete domCache[htmlFile];
+
+  Object.keys(metaTagMap).forEach((key) => {
+    if (htmlFiles.includes(key)) delete metaTagMap[key];
+  });
+  const domsAffected = new Set();
+  const astsAffected = new Set();
+  for (const cssFile of cssFiles) {
+    removeIdFromCache(cssFile);
+
+    if (config.mergeCss && mergeCssMap[cssFile]) delete mergeCssMap[cssFile];
+
+    if (metaCache[cssFile]) {
+      for (const dom of metaCache[cssFile]) {
+        if(dom.isDOM)
+          domsAffected.add(dom);
+        else if (dom.isAST) 
+          astsAffected.add (dom);
+
+      }
+    }
+  }
+
+  writeCssAndHtml(
+    [],
+    Array.from(domsAffected),
+    Array.from (astsAffected)
+  );
+}
+
+function getOutermostDir(filePath) {
+  const normalized = path.normalize(filePath);
+  const parts = normalized.split(path.sep).filter(Boolean);
+  return parts[0]; // first directory
+}
+
+async function onChangePublic(files) {
+  
+  for (const restFile of files) { 
+    if (getOutermostDir(restFile) !== state.config.inputDir || isRestFile(restFile))
+      copyFile(restFile);
+  }
+
+}
+
+async function onRemovePublic(files) {
+  for (const restFile of files) {
+    if (getOutermostDir(restFile) !== state.config.inputDir || isRestFile (restFile))
+    unlinkFile(restFile);
+  }
+
+}
+export {
+  onRemove,
+  onChange,
+  onChangePublic,
+  onRemovePublic,
+};
