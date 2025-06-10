@@ -160,20 +160,13 @@ For this, there are several CMD commands.
 ##### 🧬 npx team-sync
 
 Downloads the team repo back to your local content. Use this command before getting to work, to assure your content is up-to-date.
-NOTE:
-
-1. There can be some data loss.
-   `recipe-card__img` becomes `.recipe-card .img`, regardless of whether the img was originally defined as an element selector, or class.
-   The final output is the same!
-2. Your local files will be overwritten with the content in the repo. To revert to a backup:
-   1. Call `git log`.
-   2. Check the ID for commit `Pre-sync`.
-   3. Run `git reset --hard <commit-id>`;
+**Note:** team-sync re-generates your classnames based on current styles in the team repo. This may override formatting details (e.g. whether .img was originally a class or an element selector), but the final output remains unchanged.
 
 #### 🔃 npx pull
 
 Pulls and merges from the master branch. Requires you to be on a different branch.
-**Always use this instead of manual Git pulls! If you don't, collisions CAN happen due to missing diff algorithms**
+**Important:** npx pull ensures scoped classnames remain consistent during merges. Manual Git pulls may skip conflict resolution steps unique to AutoScope, leading to incorrect scoping.
+**Always use this instead of manual Git pulls**
 
 #### 🎯 npx resolve --name <class name>
 

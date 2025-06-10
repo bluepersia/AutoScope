@@ -4,7 +4,7 @@ import fs from 'fs';
 import * as DomUtils from 'domutils';
 import multimatch from 'multimatch';
 import { Text } from 'domhandler';
-import { default as render } from "dom-serializer";
+import { default as render } from 'dom-serializer';
 
 let inputDir;
 let outputDir;
@@ -42,6 +42,7 @@ let config = {
   stripClasses: true, //Strip classes that are never targetted with CSS.
   flattenCombis: [], //Flatten combinators, e.g. > becomes _a_
   strictBEM: true, //Use - instead of __ after the first occurence
+  flattenElements: true,
   overrideConfig: {},
 };
 const allCombis = {
@@ -74,6 +75,7 @@ const state = {
   mergeCssMap,
   runtimeMap,
   allCombis,
+  allCombisKeys: Object.keys(allCombis),
   metaCache,
   metaTagMap,
   domCache,
@@ -83,7 +85,7 @@ const state = {
   globalCssCache: {},
   teamRepoHashMap: {},
   isCopySrc: true,
-  astCache: {}
+  astCache: {},
 };
 
 async function setConfig(cfg) {
@@ -170,9 +172,9 @@ function getGlobalCssFiles(files) {
   if (!state.config.globalCss) return [];
 
   return multimatch(
-        files,
-        prefixGlobsWithDir(state.config.globalCss, state.config.inputDir)
-      );
+    files,
+    prefixGlobsWithDir(state.config.globalCss, state.config.inputDir)
+  );
 }
 function findIdFromCache(scopeName, obj) {
   return (
@@ -226,7 +228,7 @@ function generateCssModuleHash(filePath, attempt = 1, options = {}) {
     .digest('hex');
 
   // Return the first `length` chars
-  const hash = `h${attempt}`;// fullHash.slice(0, length);
+  const hash = `h${attempt}`; // fullHash.slice(0, length);
 
   if (!/[a-zA-Z]/.test(hash) || state.scopeHashsMap.has(hash))
     return generateCssModuleHash(filePath, attempt + 1);
@@ -241,7 +243,6 @@ function generateCssModuleHash(filePath, attempt = 1, options = {}) {
   return hash;
 }
 function arePathsEqual(pathA, pathB, rootFilePath) {
-
   const rootDir = path.resolve(process.cwd()); // your project root
   const rootFileDir = path.dirname(path.resolve(process.cwd(), rootFilePath)); // folder of rootFilePath
 
@@ -277,7 +278,8 @@ function insertLinkIntoHead(dom, link, addSpace = false) {
 
   if (
     DomUtils.findOne(
-      (el) => el.name === 'link' && arePathsEqual (el.attribs.href, link, dom.outPath),
+      (el) =>
+        el.name === 'link' && arePathsEqual(el.attribs.href, link, dom.outPath),
       dom.children,
       true
     )
@@ -286,8 +288,8 @@ function insertLinkIntoHead(dom, link, addSpace = false) {
   // Find the <head> tag
   const head = DomUtils.findOne((el) => el.name === 'head', dom.children, true);
 
-   // If no <head>, create one and insert it
-   if (!head) {
+  // If no <head>, create one and insert it
+  if (!head) {
     head = {
       type: 'tag',
       name: 'head',
@@ -311,7 +313,7 @@ function insertLinkIntoHead(dom, link, addSpace = false) {
     head.children.pop();
   }
 
-   head.children.push(linkElement);
+  head.children.push(linkElement);
   linkElement.parent = head;
 
   if (addSpace) head.children.push(new Text('\n '));
@@ -360,13 +362,9 @@ function findHtmlDeps(cssFiles, ast = false) {
   //console.log (Object.keys (metaCache));
   for (const cssFile of cssFiles) {
     if (state.metaCache[cssFile]) {
-      for (const htmlFile of state.metaCache[cssFile]) 
-      {
-        if (ast && htmlFile.isAST)
-          htmlDeps.add(htmlFile);
-        else if (!ast && htmlFile.isDOM)
-          htmlDeps.add (htmlFile); 
-
+      for (const htmlFile of state.metaCache[cssFile]) {
+        if (ast && htmlFile.isAST) htmlDeps.add(htmlFile);
+        else if (!ast && htmlFile.isDOM) htmlDeps.add(htmlFile);
       }
     }
   }
@@ -449,8 +447,7 @@ function resolveHref(filePath, href) {
     return href.replace('/', '');
   }
 
-  if (!href.startsWith ('./'))
-    return href;
+  if (!href.startsWith('./')) return href;
 
   // Get the directory of filePath
   const fileDir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
@@ -465,19 +462,15 @@ function resolveHref(filePath, href) {
     : resolved.pathname;
 }
 
-
-function getHasClassRegex (klass)
-{
-  return new RegExp (`class=["'][^"']*\\b${klass}\\b[^"']*["']`);
+function getHasClassRegex(klass) {
+  return new RegExp(`class=["'][^"']*\\b${klass}\\b[^"']*["']`);
 }
 
-function getHasClassNameRegex (klass)
-{
-  return new RegExp(`className=["'][^"']*\\b${klass}\\b[^"']*["']`)
+function getHasClassNameRegex(klass) {
+  return new RegExp(`className=["'][^"']*\\b${klass}\\b[^"']*["']`);
 }
 
-
-export{
+export {
   state,
   setConfig,
   getNumberSuffix,
