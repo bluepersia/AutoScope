@@ -1,31 +1,49 @@
-
-import {state, findDomsInCache, replaceLast, getHasClassNameRegex, getHasClassRegex,addIdToIdCacheEnd, resolveConfigFor, getNumberSuffix, getHashFromSelector, addIdToIdCache} from '../shared.js';
-import {writeCssAndHtml} from './conversion.js';
-import {readMetaTags} from './readMetaTags.js';
-import {getAST, writeToAST} from './react.js';
+import {
+  state,
+  findDomsInCache,
+  replaceLast,
+  getHasClassNameRegex,
+  getHasClassRegex,
+  addIdToIdCacheEnd,
+  resolveConfigFor,
+  getNumberSuffix,
+  getHashFromSelector,
+  addIdToIdCache,
+} from '../shared.js';
+import { writeCssAndHtml } from './conversion.js';
+import { readMetaTags } from './readMetaTags.js';
+import { getAST, writeToAST } from './react.js';
 import fs from 'fs';
 import path from 'path';
 import postcss from 'postcss';
 import { parseDocument, DomUtils } from 'htmlparser2';
 import * as cssSelect from 'css-select';
-import {globby} from 'globby';
-import {default as serialize} from 'dom-serializer';
+import { globby } from 'globby';
+import { default as serialize } from 'dom-serializer';
 import http from 'http';
-import {default as inquirer} from 'inquirer';
+import { default as inquirer } from 'inquirer';
 import * as domUtils from 'domutils';
 
+import simpleGit from 'simple-git';
+
+const git = simpleGit(process.cwd());
 
 import { Element, Text } from 'domhandler';
 
-async function syncTeamRepo(config, strip = [], fork = null, syncRepo = config.teamRepo) {
-    state.resolveClses = strip;
+async function syncTeamRepo(
+  config,
+  strip = [],
+  fork = null,
+  syncRepo = config.teamRepo
+) {
+  //Backup
+  await git.add('.');
+  await git.commit('Pre-sync');
 
- 
+  state.resolveClses = strip;
 
-if (!fork)
-{
-
-/*
+  if (!fork) {
+    /*
   if (config.globalCss) {
     const globalCssFiles = await globby(
       prefixGlobsWithDir(config.globalCss, config.inputDir)
@@ -35,7 +53,7 @@ if (!fork)
   }
 
   copyGlobalCss(config.outputDir, config.inputDir); */
-}
+  }
 
   const teamCss = `${syncRepo}/**/*.css`;
   const teamHtml = `${syncRepo}/**/*.html`;
@@ -52,7 +70,7 @@ if (!fork)
 
   const outputs = [];
 
-  const stripData = {htmlDeps: [], reactDeps:[]};
+  const stripData = { htmlDeps: [], reactDeps: [] };
 
   await readAndWriteCss();
 
@@ -60,7 +78,7 @@ if (!fork)
     // e.g. ".recipe-page-234ffb" → "recipe-page-234ffb"
     scopeSelector.slice(1)
   );
-  
+
   await readAndWriteHtml();
   await readAndWriteReact();
 
@@ -82,7 +100,11 @@ if (!fork)
     // Replace combinators in combination keys
 
     for (const [key, entry] of Object.entries(state.allCombis)) {
-      if (localConfig.flattenCombis === true || (Array.isArray (localConfig.flattenCombis) && localConfig.flattenCombis.includes(key))) {
+      if (
+        localConfig.flattenCombis === true ||
+        (Array.isArray(localConfig.flattenCombis) &&
+          localConfig.flattenCombis.includes(key))
+      ) {
         selector = selector.replace(entry, ` ${key} .`);
       }
     }
@@ -131,62 +153,48 @@ if (!fork)
       const css = await fs.promises.readFile(teamPath, 'utf-8');
       const root = postcss.parse(css, { from: teamPath });
 
-     
-      
       root.walkRules((rule) => {
-
-       
         rule.walkDecls('--scope-hash', (decl) => {
           const sel = rule.selector.trim();
-          const hash = decl.value.split (' ')[0].trim();
-        
-          let className = sel.replaceAll ('.', '');
-      
-          if (strip.length > 0)
-          {
-            if (!strip.includes (className))
-            return;
+          const hash = decl.value.split(' ')[0].trim();
+
+          let className = sel.replaceAll('.', '');
+
+          if (strip.length > 0) {
+            if (!strip.includes(className)) return;
           }
           const scopeName = className.replace(/-\w+$/, '');
 
-          const ruleIndex = root.nodes.indexOf (rule);
+          const ruleIndex = root.nodes.indexOf(rule);
           const adjacentRules = [];
 
-            for(let i = ruleIndex - 1; i >= 0; i--)
-            {
-              const rule = root.nodes[i];
-              if (rule.selector?.startsWith (sel))
-                adjacentRules.unshift (rule);
-              else 
-                break;
-            }
+          for (let i = ruleIndex - 1; i >= 0; i--) {
+            const rule = root.nodes[i];
+            if (rule.selector?.startsWith(sel)) adjacentRules.unshift(rule);
+            else break;
+          }
 
-            adjacentRules.push (root.nodes[ruleIndex]);
+          adjacentRules.push(root.nodes[ruleIndex]);
 
-            for (let i = ruleIndex + 1; i < root.nodes.length; i++)
-            {
-              const rule = root.nodes[i];
-              if (rule.type !== 'rule' || rule.selector?.startsWith (sel))
-                {
-                  adjacentRules.push (rule);
-                } else
-                  break;
-            }
-         
+          for (let i = ruleIndex + 1; i < root.nodes.length; i++) {
+            const rule = root.nodes[i];
+            if (rule.type !== 'rule' || rule.selector?.startsWith(sel)) {
+              adjacentRules.push(rule);
+            } else break;
+          }
+
           if (hash && (!fork || fork === hash)) {
-        
             scopes.push({
               scopeSelector: sel,
               hash,
               teamCssPath: teamPath,
               scopeName,
               className,
-              adjacentRules
+              adjacentRules,
             });
           }
         });
       });
-
     }
 
     /*
@@ -205,31 +213,37 @@ if (!fork)
       }
     }*/
 
-    for (const { scopeSelector, hash, teamCssPath, scopeName, className, adjacentRules} of scopes) {
+    for (const {
+      scopeSelector,
+      hash,
+      teamCssPath,
+      scopeName,
+      className,
+      adjacentRules,
+    } of scopes) {
       let outPath = null;
-      
+
       for (const srcPath of srcCssFiles) {
         const content = await fs.promises.readFile(srcPath, 'utf8');
-      
-        if (content.includes(`--scope-hash: ${hash}`) || content.includes(`--scope-hash:${hash}`)) {
 
-          outPath = srcPath.replace (path.basename (srcPath), `${scopeName}.css`);
+        if (
+          content.includes(`--scope-hash: ${hash}`) ||
+          content.includes(`--scope-hash:${hash}`)
+        ) {
+          outPath = srcPath.replace(path.basename(srcPath), `${scopeName}.css`);
           break;
         }
       }
 
       if (!outPath) {
-//        const rel = path.relative(teamRepo, teamCssPath);
+        //        const rel = path.relative(teamRepo, teamCssPath);
 
-  //      outPath = path.join(srcRoot, rel);
-          continue;
+        //      outPath = path.join(srcRoot, rel);
+        continue;
       }
-      
-      
-      if (strip.length > 0)
-        stripData.filePath = outPath;
-     
-    
+
+      if (strip.length > 0) stripData.filePath = outPath;
+
       const css = await fs.promises.readFile(teamCssPath, 'utf8');
 
       const root = postcss.parse(css, { from: teamCssPath });
@@ -237,7 +251,7 @@ if (!fork)
 
       const extracted = [];
       const scopeClass = scopeSelector.slice(1);
-      const baseClass = scopeClass.replace(/-\w+$/, '') ; // Remove hash or numeric suffix
+      const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
       let scopeRegex;
 
       if (localConfig.dontFlatten) {
@@ -249,65 +263,55 @@ if (!fork)
       }
       const keyframesArr = [];
       adjacentRules.forEach((rule) => {
-        let isKeyframes = rule.parent?.type === 'atrule' && rule.parent.name === 'keyframes'
-        
-        if (isKeyframes)
-        {
-       
-          if (keyframesArr.includes (rule.parent))
-          return;
-        
-          if (rule.parent.params.startsWith (`${className}__`))
-          {
-            const spl = rule.parent.params.split ('__');
+        let isKeyframes =
+          rule.parent?.type === 'atrule' && rule.parent.name === 'keyframes';
+
+        if (isKeyframes) {
+          if (keyframesArr.includes(rule.parent)) return;
+
+          if (rule.parent.params.startsWith(`${className}__`)) {
+            const spl = rule.parent.params.split('__');
             rule.parent.params = spl[spl.length - 1];
 
-            rule.walkDecls ('animation', decl => {
-              if (decl.value.startsWith (`${className}__`))
-              {
-                const spl = decl.value.split ('__');
+            rule.walkDecls('animation', (decl) => {
+              if (decl.value.startsWith(`${className}__`)) {
+                const spl = decl.value.split('__');
                 decl.value = spl[spl.length - 1];
               }
-          })
-          rule.walkDecls ('animation-name', decl => {
-            if (decl.value.startsWith (`${scopeSelector}__`))
-            {
-              const spl = decl.value.split ('__');
-              decl.value = spl[spl.length - 1];
-            }
-          })
-          extracted.push (rule.parent);
+            });
+            rule.walkDecls('animation-name', (decl) => {
+              if (decl.value.startsWith(`${scopeSelector}__`)) {
+                const spl = decl.value.split('__');
+                decl.value = spl[spl.length - 1];
+              }
+            });
+            extracted.push(rule.parent);
           }
           return;
         }
 
-       
         const originalSelector = rule.selector;
-
 
         // Rule must start with full scope selector (e.g. ".recipe-page-234ffb")
         const sels = originalSelector.split(',').map((s) => s.trim());
         const matchesAll = sels.some((sel) => sel.startsWith(scopeSelector));
 
-       
-
         if (!matchesAll) return;
 
         if (strip.length > 0) {
-          const hasScopeHash = rule.nodes?.some((n) =>
-            n.type === 'decl' && n.prop === '--scope-hash'
+          const hasScopeHash = rule.nodes?.some(
+            (n) => n.type === 'decl' && n.prop === '--scope-hash'
           );
-        
+
           if (hasScopeHash) {
             const newDecl = postcss.decl({
               prop: '--resolve-collision',
-              value: true
+              value: true,
             });
-        
+
             rule.append(newDecl);
           }
         }
-        
 
         let newSelector;
         if (localConfig.dontFlatten)
@@ -327,10 +331,8 @@ if (!fork)
 
         rule.selector = newSelector;
 
-        if (rule.parent?.type === 'atrule' && rule.parent.name === 'media')
-        {
-          if (!extracted.includes (rule))
-            extracted.push (rule.parent);
+        if (rule.parent?.type === 'atrule' && rule.parent.name === 'media') {
+          if (!extracted.includes(rule)) extracted.push(rule.parent);
           return;
         }
 
@@ -339,47 +341,51 @@ if (!fork)
 
       if (extracted.length === 0) continue;
 
-      outputs.push ({outPath, output: extracted.map (e => e.toString()).join('\n\n')});
+      outputs.push({
+        outPath,
+        output: extracted.map((e) => e.toString()).join('\n\n'),
+      });
 
-      outputScopes.push({ scopeSelector, baseClass, outPath, klass: scopeSelector.slice(1) });
+      outputScopes.push({
+        scopeSelector,
+        baseClass,
+        outPath,
+        klass: scopeSelector.slice(1),
+      });
     }
 
     return outputScopes;
   }
 
   async function readAndWriteHtml() {
-
     for (const htmlPath of htmlFiles) {
       const outPath = path.join(srcRoot, path.relative(syncRepo, htmlPath));
-      
 
       const html = await fs.promises.readFile(htmlPath, 'utf8');
 
       let hasClass = false;
-      for (const klass of allScopeClasses)
-       {
-          const classRegex = getHasClassRegex (klass); 
+      for (const klass of allScopeClasses) {
+        const classRegex = getHasClassRegex(klass);
 
-         if (classRegex.test (html))
-        {
+        if (classRegex.test(html)) {
           hasClass = true;
           break;
         }
       }
-      if (!hasClass)
-        continue;
+      if (!hasClass) continue;
 
-      stripData.htmlDeps.push (outPath);
+      stripData.htmlDeps.push(outPath);
 
-      
-      const dom = await readAndWriteDom(parseDocument (html, {recognizeSelfClosing:true}));
-      
-      outputs.push ({outPath, output: serialize(dom, { encodeEntities: 'utf8' })});
-     
+      const dom = await readAndWriteDom(
+        parseDocument(html, { recognizeSelfClosing: true })
+      );
+
+      outputs.push({
+        outPath,
+        output: serialize(dom, { encodeEntities: 'utf8' }),
+      });
     }
   }
-
-  
 
   function unflattenHtmlClass(className, localConfig) {
     if (localConfig.dontFlatten) {
@@ -398,79 +404,70 @@ if (!fork)
 
     function selectOuterUnscopedNodes(dom, outputScopes) {
       const scopePrefixes = outputScopes.map(({ klass }) => klass);
-    
+
       const results = [];
-    
-      function isMyKlass (cls)
-      {
-        return scopePrefixes.some (val => cls === val || cls.startsWith (`${val}__`));
+
+      function isMyKlass(cls) {
+        return scopePrefixes.some(
+          (val) => cls === val || cls.startsWith(`${val}__`)
+        );
       }
-      function processNode (node, currBreak = false)
-      {
-        if (!node.attribs?.class)
-        {
-          for(const child of node.children || [])
-            processNode (child, currBreak);
+      function processNode(node, currBreak = false) {
+        if (!node.attribs?.class) {
+          for (const child of node.children || [])
+            processNode(child, currBreak);
           return;
         }
 
-        const classes = node.attribs.class.trim().split(/\s+/).filter (cls => !cls.startsWith ('$'))
+        const classes = node.attribs.class
+          .trim()
+          .split(/\s+/)
+          .filter((cls) => !cls.startsWith('$'));
 
-        if (classes.some (val => isMyKlass (val)))
-          currBreak = false;
+        if (classes.some((val) => isMyKlass(val))) currBreak = false;
 
-        if (!currBreak)
-        {
-          if (classes.some (val => scopePrefixes.includes (val)))
-          {
-            if (classes.every (val => !isMyKlass (val)))
-              results.push ({node, excludeAll: true});
-            else if (classes.some (val => !isMyKlass (val)))
-              results.push ({node, exclude: classes.filter (cls => !isMyKlass (cls))})
-          }
-          else
-          if (classes.every (val => !isMyKlass (val)))
-          {
-            results.push ({ node, allInvalid:true});
+        if (!currBreak) {
+          if (classes.some((val) => scopePrefixes.includes(val))) {
+            if (classes.every((val) => !isMyKlass(val)))
+              results.push({ node, excludeAll: true });
+            else if (classes.some((val) => !isMyKlass(val)))
+              results.push({
+                node,
+                exclude: classes.filter((cls) => !isMyKlass(cls)),
+              });
+          } else if (classes.every((val) => !isMyKlass(val))) {
+            results.push({ node, allInvalid: true });
             currBreak = true;
-          }
-          else if (classes.some (val => !isMyKlass(val)))
-          {
-            results.push ({node, invalid: classes.filter (val => !isMyKlass (val))});
+          } else if (classes.some((val) => !isMyKlass(val))) {
+            results.push({
+              node,
+              invalid: classes.filter((val) => !isMyKlass(val)),
+            });
             currBreak = true;
           }
         }
 
-        for(const child of node.children || [])
-          processNode (child, currBreak);
-          
+        for (const child of node.children || []) processNode(child, currBreak);
       }
 
-      processNode (dom);
+      processNode(dom);
 
       return results;
     }
-    
-    const notMine = selectOuterUnscopedNodes (dom, outputScopes);
 
-    for (const {node, allInvalid, invalid, exclude, excludeAll} of notMine)
-    {
-     
-      if (excludeAll)
-        node.attribs['data-exclude'] = '';
-      else if (exclude)
-        node.attribs['data-exclude'] = exclude.join (',');
-      else if (allInvalid)
-        node.attribs['data-break'] = '';
-      else
-        node.attribs['data-break'] = invalid.join(',');
+    const notMine = selectOuterUnscopedNodes(dom, outputScopes);
+
+    for (const { node, allInvalid, invalid, exclude, excludeAll } of notMine) {
+      if (excludeAll) node.attribs['data-exclude'] = '';
+      else if (exclude) node.attribs['data-exclude'] = exclude.join(',');
+      else if (allInvalid) node.attribs['data-break'] = '';
+      else node.attribs['data-break'] = invalid.join(',');
     }
-   
+
     for (const [
       i,
       { scopeSelector, baseClass, outPath, klass },
     ] of outputScopes.entries()) {
-
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
       let foundExact = false;
@@ -482,11 +479,7 @@ if (!fork)
           .some((token) => token.startsWith(klass));
       }, dom);
 
-
-     
       nodes.forEach((node) => {
-        
-    
         const classTokens = node.attribs.class.split(/\s+/);
 
         let updated = false;
@@ -535,12 +528,11 @@ if (!fork)
           if (localConfig.writeRuntimeMap) continue;
 
           const link = new Element('meta', { name, content });
-       
+
           head.children.push(link);
           //head.children.push(new Text('\n '));
-
         }
-        
+
         if (config.mergeCss)
           head.children = head.children.filter(
             (c) =>
@@ -560,78 +552,77 @@ if (!fork)
   }
   async function readAndWriteReact() {
     for (const file of reactFiles) {
-      const code = await fs.promises.readFile(file, 'utf8')
+      const code = await fs.promises.readFile(file, 'utf8');
 
-      let hasClass = false
+      let hasClass = false;
       for (const klass of allScopeClasses) {
-        const classNameRegex = getHasClassNameRegex (klass);
+        const classNameRegex = getHasClassNameRegex(klass);
         if (classNameRegex.test(code)) {
-          hasClass = true
-          break
+          hasClass = true;
+          break;
         }
       }
-    
-      if (!hasClass) return
-    
-      reactDeps.push(outPath)
 
-      const ast = await getAST (file);
-      for (const dom of ast.doms)
-        readAndWriteDom (dom);
+      if (!hasClass) return;
 
-      replaceLinkStylesheetsWithImports (ast);
-      const out = await writeToAST (ast);
-      outputs.push ({outPath, output:out});
+      reactDeps.push(outPath);
+
+      const ast = await getAST(file);
+      for (const dom of ast.doms) readAndWriteDom(dom);
+
+      replaceLinkStylesheetsWithImports(ast);
+      const out = await writeToAST(ast);
+      outputs.push({ outPath, output: out });
     }
   }
 
-  async function download ()
-  {
-    
-  for (const {outPath, output} of outputs)
-    {
-        await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-        const out = outPath.endsWith ('.html') ? await state.htmlFormatter (output) :
-        outPath.endsWith ('.css') ? await state.cssFormatter (output) :
-        outPath.endsWith ('.jsx') ? await state.jsFormatter (output) :
-        await state.tsFormatter (output);
-        await fs.promises.writeFile (outPath, out);
-        console.log ('outp: ', out);
+  async function download() {
+    for (const { outPath, output } of outputs) {
+      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      const out = outPath.endsWith('.html')
+        ? await state.htmlFormatter(output)
+        : outPath.endsWith('.css')
+        ? await state.cssFormatter(output)
+        : outPath.endsWith('.jsx')
+        ? await state.jsFormatter(output)
+        : await state.tsFormatter(output);
+      await fs.promises.writeFile(outPath, out);
+      console.log('outp: ', out);
     }
-    
   }
 
   try {
     const data = await fetch('http://localhost:3012/read-team');
+  } catch (err) {}
 
-  } catch (err) {
-    
+  await download();
+
+  if (stripData.filePath) {
+    let json = JSON.stringify(stripData);
+
+    try {
+      const res = await fetch('http://localhost:3012/resolve-build', {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        body: json,
+      });
+    } catch (err) {
+      const cssDeps = await readMetaTags([
+        ...stripData.htmlDeps,
+        ...stripData.reactDeps,
+      ]);
+      await writeCssAndHtml(
+        cssDeps,
+        findDomsInCache(stripData.htmlDeps),
+        findDomsInCache(stripData.reactDeps)
+      );
+    } finally {
+      return;
+    }
   }
-
-  await download ();
-
-  if (stripData.filePath)
-  {
-    let json = JSON.stringify (stripData)
-
-try {
-const res = await fetch ('http://localhost:3012/resolve-build', {
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  method: "POST",
-  body: json
-})
-}catch (err)
-{
-  const cssDeps = await readMetaTags ([...stripData.htmlDeps, ...stripData.reactDeps]);
-  await writeCssAndHtml (cssDeps, findDomsInCache (stripData.htmlDeps), findDomsInCache (stripData.reactDeps));
-}finally
-{
-  return
-}
-}
-/*
+  /*
 if (postBuild)
 {
   try {
@@ -661,104 +652,94 @@ if (postBuild)
 }*/
 }
 
-function clearTeamFromIDCache ()
-{
-  for (const [key, arr] of Object.entries (state.scopeIDsCache))
-    state.scopeIDsCache[key] = arr.filter (obj => !obj.hash && !obj.team);
+function clearTeamFromIDCache() {
+  for (const [key, arr] of Object.entries(state.scopeIDsCache))
+    state.scopeIDsCache[key] = arr.filter((obj) => !obj.hash && !obj.team);
 
-  
   //state.scopeHashsMap = new Set (Array.from (state.scopeHashsMap).filter (h => !state.teamRepoHashMap.has (h)));
   //state.teamRepoHashMap = new Set();
 }
 
-
 async function readTeamIDs() {
-
   let mode;
 
-const {config, scopeHashsMap} = state;
+  const { config, scopeHashsMap } = state;
 
   const teamCssFiles = await globby([`${config.teamRepo}/**/*.css`]);
-  
- // const cssFiles = config.globalCss ? teamCssFiles.filter (cssFile => multimatch (cssFile, prefixGlobsWithDir (config.globalCss, outputDir)).length <= 0) : teamCssFiles
-  
-  clearTeamFromIDCache ();
-  
+
+  // const cssFiles = config.globalCss ? teamCssFiles.filter (cssFile => multimatch (cssFile, prefixGlobsWithDir (config.globalCss, outputDir)).length <= 0) : teamCssFiles
+
+  clearTeamFromIDCache();
 
   for (const file of teamCssFiles) {
     const teamCss = await fs.promises.readFile(file, 'utf8');
-    
+
     await postcss([
       (root) => {
-        
-      
-        root.walkRules ((rule) =>
-        {
-          if (rule.selector)
-          {
-            const selectors = rule.selector.split (',').filter (s => !s.includes ('__'));
+        root.walkRules((rule) => {
+          if (rule.selector) {
+            const selectors = rule.selector
+              .split(',')
+              .filter((s) => !s.includes('__'));
 
-            selectors.forEach (selector =>
-            {
+            selectors.forEach((selector) => {
               const className = selector.replaceAll('.', '');
               //if (state.resolveClses.includes (className))
-                //return;
+              //return;
 
               let hashLink;
               rule.walkDecls((decl) => {
                 if (decl.prop === '--scope-hash') {
-                  
-                  hashLink = decl.value.split (' ')[0].trim();
+                  hashLink = decl.value.split(' ')[0].trim();
                   return false;
                 }
               });
-              if (hashLink) 
-                {
-                  
-                  const numberSuffix = getNumberSuffix (selector);
-                  const hash = hashLink;
-                  const hashSuffix = selector.endsWith (hash) ? hash : '';
-                  
-                  const suffix = numberSuffix || hashSuffix; 
-                 
-                  const scopeName = suffix ? replaceLast (className, `-${suffix}`, '') : className;
+              if (hashLink) {
+                const numberSuffix = getNumberSuffix(selector);
+                const hash = hashLink;
+                const hashSuffix = selector.endsWith(hash) ? hash : '';
 
-                  /*
+                const suffix = numberSuffix || hashSuffix;
+
+                const scopeName = suffix
+                  ? replaceLast(className, `-${suffix}`, '')
+                  : className;
+
+                /*
                   if (!scopeHashsMap[scopeName])
                     scopeHashsMap[scopeName] = new Set ();
   
                   scopeHashsMap[scopeName].add(hash);*/
 
-                  state.scopeHashsMap.add (hash);
-                  //state.teamRepoHashes.add (hash);
+                state.scopeHashsMap.add(hash);
+                //state.teamRepoHashes.add (hash);
 
-                  /*if(!state.variableHashes[scopeName])
+                /*if(!state.variableHashes[scopeName])
                     state.variableHashes[scopeName] = new Set ();
                   
                   state.variableHashes[scopeName].add (hashLink);
                   state.variableHashes[scopeName].add (hash);*/
 
-                  
-                  const objAdd = {hash: hashLink, suffix: hashSuffix || numberSuffix};
-                 
-                  if (numberSuffix)
-                  {
-                    objAdd.id = numberSuffix;
-                   
-                    addIdToIdCache(scopeName, objAdd);
-                  }
-                  else if (!hashSuffix)
-                  {
-                    objAdd.id = 1;
-                    addIdToIdCache (scopeName, objAdd);
-                  }
+                const objAdd = {
+                  hash: hashLink,
+                  suffix: hashSuffix || numberSuffix,
+                };
 
-                  return;
+                if (numberSuffix) {
+                  objAdd.id = numberSuffix;
+
+                  addIdToIdCache(scopeName, objAdd);
+                } else if (!hashSuffix) {
+                  objAdd.id = 1;
+                  addIdToIdCache(scopeName, objAdd);
                 }
 
-                const numberSuffix = getNumberSuffix (selector);
-               
-                /*
+                return;
+              }
+
+              const numberSuffix = getNumberSuffix(selector);
+
+              /*
                if(numberSuffix)
                {
                
@@ -769,25 +750,25 @@ const {config, scopeHashsMap} = state;
                 
                }*/
 
-                const scopeName = numberSuffix ? replaceLast (className, `-${numberSuffix}`, '') : className;
+              const scopeName = numberSuffix
+                ? replaceLast(className, `-${numberSuffix}`, '')
+                : className;
 
-                const objAdd = {id:numberSuffix || 1, team:true};
-               
-                addIdToIdCache (scopeName, objAdd);
-            }
-            )
+              const objAdd = { id: numberSuffix || 1, team: true };
+
+              addIdToIdCache(scopeName, objAdd);
+            });
           }
-        })
+        });
+      },
+    ]).process(teamCss, { from: undefined });
+  }
+  //let containsScope = false;
 
-      }]).process (teamCss, { from: undefined});
+  //if (!scopeHashsMap.hasOwnProperty(scopeName))
+  //  scopeHashsMap[scopeName] = new Set();
 
-    }
-          //let containsScope = false;
-
-          //if (!scopeHashsMap.hasOwnProperty(scopeName))
-          //  scopeHashsMap[scopeName] = new Set();
-
-       /*   root.walkRules((rule) => {
+  /*   root.walkRules((rule) => {
             //if (containsScope) return;
 
             /*
@@ -890,11 +871,6 @@ const {config, scopeHashsMap} = state;
     ]).process(teamCss, { from: undefined });
   }
 */
-
 }
 
-
-export {
-    syncTeamRepo,
-    readTeamIDs
-}
+export { syncTeamRepo, readTeamIDs };

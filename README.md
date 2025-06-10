@@ -92,7 +92,7 @@ or if set to hash:
 
 ## 🛠️ How To Use
 
-### 🧬 CSS
+### 💅 CSS
 
 Each CSS file in `inputDir` gets treated as its own scope. The filename is the scope name. Think of it as a block or module.
 If your selectors do not start with the filename, the scope name will automatically be prepended to your selectors.
@@ -151,6 +151,34 @@ AutoScope currently supports:
 
 Install the node package of the formatter.
 Each formatter uses the config structure of the respective node package.
+
+#### 🔄 Syncing
+
+To keep your work up-to-date with the repo, you need to sync regularly.
+For this, there are several CMD commands.
+
+##### 🧬 npx team-sync
+
+Downloads the team repo back to your local content. Use this command before getting to work, to assure your content is up-to-date.
+NOTE:
+
+1. There can be some data loss.
+   `recipe-card__img` becomes `.recipe-card .img`, regardless of whether the img was originally defined as an element selector, or class.
+   The final output is the same!
+2. Your local files will be overwritten with the content in the repo. To revert to a backup:
+   1. Call `git log`.
+   2. Check the ID for commit `Pre-sync`.
+   3. Run `git reset --hard <commit-id>`;
+
+#### 🔃 npx pull
+
+Pulls and merges from the master branch. Requires you to be on a different branch.
+**Always use this instead of manual Git pulls! If you don't, collisions CAN happen due to missing diff algorithms**
+
+#### 🎯 npx resolve --name <class name>
+
+Same as npx pull, but only syncs the specified class and resolves it to a new hash/suffix.
+Use this when a collision has occured in the team repo to reset the suffix.
 
 ## ⚙️ Config Options
 
