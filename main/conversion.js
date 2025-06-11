@@ -184,7 +184,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     let hashRead;
     let hashDecl;
     let delayedWrite = false;
-    const rulesArr = [];
+    let rulesArr = [];
 
     result = await postcss([
       async (root) => {
@@ -324,11 +324,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             rule.parent?.type === 'atrule' &&
             rule.parent.name === 'media'
           ) {
-            if (rulesArr.includes(rule.parent)) return;
-
-            const atRule = rule.parent;
-            rulesArr.push(atRule.clone());
-            return;
+            if (!rulesArr.includes(rule.parent))rulesArr.push (rule.parent);
+           
           }
 
           function processSelector(rule, selector) {
@@ -423,17 +420,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           if (!(rule.parent?.type === 'atrule' && rule.parent.name === 'media'))
             rulesArr.push(rule);
         });
-        /*
-          if (scanIDs)
-          {
-            if(!localConfig.dontHashFirst || scopeIndex > 1)
-            {
-              const metaComment = postcss.comment ({
-                text: `@exclude ${selectorsObj.hashedName}`
-              })
-              allRules[0].parent.insertBefore (allRules[0], metaComment);
-            }
-          }*/
+        rulesArr = rulesArr.map (r => r.name === 'media' ? r.clone() : r);
       },
     ]).process(css, { from: undefined });
 
@@ -862,8 +849,6 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                   .selectAll(stripPseudoSelectors(raw), [scopeNode])
                   .filter((node) => !isDescendantOf(node, nestedScopeNodes));
 
-                console.log(raw, flat);
-
                 matches.forEach((match) => {
                   function processPseudoNode(node, i = flat.chain.length - 1) {
                     while (state.allCombisKeys.includes(flat.chain[i])) i--;
@@ -873,13 +858,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                     const finalPart = segmentParts[segmentParts.length - 1];
 
                     const flatSeg = flat.flatChain[i];
-                    console.log(
-                      node.name,
-                      node.attribs?.class || '',
-                      finalPart
-                    );
                     if (cssSelect.is(node, finalPart)) {
-                      console.log('yes');
                       if (!node.attribs.flatClasses)
                         node.attribs.flatClasses = [];
 

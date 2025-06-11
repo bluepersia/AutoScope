@@ -1,3 +1,5 @@
+const allCombisKeys = ['*', '>', '+', '~', ',', '|'];
+
 function stripPseudoSelectors(selector) {
   return selector.replace(/::?[a-zA-Z0-9\-\_()]+/g, '');
 }
@@ -121,6 +123,8 @@ function processElement(el, importedScope, maps) {
     if (el.matches(stripPseudoSelectors(raw))) {
       if (typeof newClass === 'object') {
         function processNode(el, i = newClass.chain.length - 1) {
+          while (allCombisKeys.includes(newClass.chain[i])) i--;
+
           const segment = newClass.chain[i].split(':')[0];
           const segmentParts = segment.split('__');
           const finalPart = segmentParts[segmentParts.length - 1];
