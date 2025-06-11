@@ -9,11 +9,11 @@ import {
   initFormatters,
   checkDevMode,
   build,
-  init
+  init,
 } from '../index.js';
 import { setConfig, copyFiles, state } from '../shared.js';
 import { syncTeamRepo } from '../main/teamRepo.js';
-import {default as inquirer} from 'inquirer';
+import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
 import http from 'http';
 import { globby } from 'globby';
@@ -23,7 +23,6 @@ import fsDefault from 'fs';
 import fg from 'fast-glob';
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
-
 
 const git = simpleGit(process.cwd());
 let currentBranch;
@@ -38,13 +37,12 @@ args.forEach((arg, index) => {
   }
 });
 
-
-const config = state.config = await loadConfig ();
-await initInputCss (config);
-await initInputHtml (config);
-await initInputReact (config);
-await initCombinatorFlattening (config);
-await initFormatters ();
+const config = (state.config = await loadConfig());
+await initInputCss(config);
+await initInputHtml(config);
+await initInputReact(config);
+await initCombinatorFlattening(config);
+await initFormatters();
 state.config.initOutputDir = state.config.outputDir;
 state.config.initUsePrettier = state.config.usePrettier;
 
@@ -52,31 +50,25 @@ checkDevMode(pull);
 
 let devMode;
 async function pull(devMd = false) {
-
   devMode = devMd;
 
-  if (!(await main()))
-    return;
+  if (!(await main())) return;
 
- 
   await syncTeamRepo(state.config, (name && [name]) || [], null, 'merge');
-  
+
   await fsExtra.remove('merge');
 
-  if (!devMode && !name)
-  {
-    await build (state.config);
+  if (!devMode && !name) {
+    await build(state.config);
   }
-  await git.add ('.');
-  await git.commit ('Commit final build');
-  await git.checkout ('master');
-  await fsExtra.remove ('merge');
-  await git.add ('.');
-  await git.commit ('Commit master');
-  await git.checkout (currentBranch);
+  await git.add('.');
+  await git.commit('Commit final build');
+  await git.checkout('master');
+  await fsExtra.remove('merge');
+  await git.add('.');
+  await git.commit('Commit master');
+  await git.checkout(currentBranch);
 }
-
-
 
 async function readFileSafe(filepath) {
   try {
@@ -147,7 +139,6 @@ async function main() {
     copyFiles('dev-temp', config.outputDir);
     await copyGlobalCss('dev-temp', config.outputDir);
   }*/
- 
 
   currentBranch = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
 
@@ -156,64 +147,65 @@ async function main() {
       'You are already on the master branch! To do a dev-pull, you must be on a different branch for merging.'
     );
 
-
-    const allFilesBefore = await fg([`${state.config.teamRepo}/**/*`], {
-      cwd,
-      dot: true,
-      onlyFiles: true,
-    });
-  
-    const cssFiles = allFilesBefore.filter((f) => f.endsWith('.css'));
-    const scopeHashes = [];
-    for (const cssFile of cssFiles) {
-      const content = await readFileSafe(path.join(cwd, cssFile));
-      const hashes = parseCssScopeHashes(content);
-      scopeHashes.push(...hashes);
-    }
-
-  await git.add ('.');
-  await git.commit('Save current branch changes before switching');
-  await git.checkout('master');
-
- 
-  try {
-    await git.pull('origin', 'master');
-  } catch (err) {
-    console.error('Git pull failed:', err);
-  }
-
-
-async function readFilesAfter ()
-{
-  const allFilesAfter = await fg([`${state.config.teamRepo}/**/*`], {
+  const allFilesBefore = await fg([`${state.config.teamRepo}/**/*`], {
     cwd,
     dot: true,
     onlyFiles: true,
   });
 
-  const cssFilesAfter = allFilesAfter.filter((f) => f.endsWith('.css'));
-  const scopeHashesAfter = [];
-  for (const cssFile of cssFilesAfter) {
+  const cssFiles = allFilesBefore.filter((f) => f.endsWith('.css'));
+  const scopeHashes = [];
+  for (const cssFile of cssFiles) {
     const content = await readFileSafe(path.join(cwd, cssFile));
     const hashes = parseCssScopeHashes(content);
-    scopeHashesAfter.push(...hashes);
+    scopeHashes.push(...hashes);
   }
 
-  const afterHashArr = scopeHashesAfter.map((h) => h.hash);
+  await git.add('.');
+  await git.commit('Save current branch changes before switching');
+  await git.checkout('master');
 
+  await fsExtra.copy(state.config.teamRepo, 'merge', {
+    filter: (src) => {
+      const rel = path.relative(state.config.teamRepo, src);
+      return !rel.startsWith('.git'); // skip .git and anything inside
+    },
+  });
 
-  return { afterHashArr, allFilesAfter};
-}
- 
-  
-let after = await readFilesAfter ();
+  try {
+    await git.pull('origin', 'master');
+  } catch (err) {
+    console.error('Git pull failed:', err);
+    await fsExtra.remove('merge');
+  }
+
+  async function readFilesAfter() {
+    const allFilesAfter = await fg([`${state.config.teamRepo}/**/*`], {
+      cwd,
+      dot: true,
+      onlyFiles: true,
+    });
+
+    const cssFilesAfter = allFilesAfter.filter((f) => f.endsWith('.css'));
+    const scopeHashesAfter = [];
+    for (const cssFile of cssFilesAfter) {
+      const content = await readFileSafe(path.join(cwd, cssFile));
+      const hashes = parseCssScopeHashes(content);
+      scopeHashesAfter.push(...hashes);
+    }
+
+    const afterHashArr = scopeHashesAfter.map((h) => h.hash);
+
+    return { afterHashArr, allFilesAfter };
+  }
+
+  let after = await readFilesAfter();
 
   const hashesAdded = after.afterHashArr.filter(
     (h) => !scopeHashes.find((obj) => obj.hash === h)
   );
 
-
-/*
+  /*
   if (config.teamRepo !== config.outputDir) {
     if (fsDefault.existsSync(config.outputDir))
       await fs.rm(config.outputDir, { recursive: true, force: true });
@@ -222,13 +214,11 @@ let after = await readFilesAfter ();
   }
 */
 
-  await git.add ('.');
+  await git.add('.');
 
-  await git.commit ('Save master before returning');
+  await git.commit('Save master before returning');
 
   await git.checkout(currentBranch);
-
- 
 
   let myCssFiles;
 
@@ -240,7 +230,6 @@ let after = await readFilesAfter ();
       const css = await fs.readFile(cssFile, 'utf-8');
 
       for (const hashAdded of hashesAdded) {
-     
         if (
           css.includes(`--scope-hash:${hashAdded}`) ||
           css.includes(`--scope-hash: ${hashAdded}`)
@@ -273,13 +262,13 @@ let after = await readFilesAfter ();
   }
 
   if (collisionOccured) {
+    await fsExtra.remove('merge');
     await pull();
     return;
   }
 
   try {
     await git.merge(['master']);
-
   } catch (e) {
     console.warn('Team repo merge conflicts detected. Please resolve them.');
 
@@ -287,27 +276,24 @@ let after = await readFilesAfter ();
       {
         type: 'confirm',
         name: 'confirmMerge',
-        message:
-          'Has the merge been resolved?',
+        message: 'Has the merge been resolved?',
         default: false,
       },
     ]);
 
-    if (!confirmMerge)
-      return;
+    if (!confirmMerge) return;
 
     await git.add('.');
     await git.commit('Resolve merge conflicts');
   }
 
+  await initTeamRepoHashMap();
 
-  await initTeamRepoHashMap ();
-
-  after = await readFilesAfter ();
+  after = await readFilesAfter();
 
   const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
   const filesDeleted = allFilesBefore
-    .filter((f) => !f.endsWith ('.css') && !after.allFilesAfter.includes(f))
+    .filter((f) => !f.endsWith('.css') && !after.allFilesAfter.includes(f))
     .map((p) => path.join(config.inputDir, path.relative(config.teamRepo, p)));
 
   const hashDeleted = [...beforeHashMap.entries()]
@@ -316,7 +302,6 @@ let after = await readFilesAfter ();
       hash,
       scopeName: className.replace(/-\w+$/, ''),
     }));
-
 
   /*
   if (devMode)
@@ -365,103 +350,93 @@ let after = await readFilesAfter ();
       }
     }
 
+    if (deletedFiles.length > 0) {
+      console.log(
+        '\nThe following files in your source have become invalidated (either through deletion or hash removal in the repo):\n'
+      );
 
-    if (deletedFiles.length > 0)
-    {
-    console.log(
-      '\nThe following files in your source have become invalidated (either through deletion or hash removal in the repo):\n'
-    );
+      deletedFiles.forEach((file) => console.log('  -', file));
+      const { confirmDelete } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmDelete',
+          message:
+            'Do you want to delete these files from your source directory?',
+          default: false,
+        },
+      ]);
 
-
-    deletedFiles.forEach((file) => console.log('  -', file));
-    const { confirmDelete } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirmDelete',
-        message:
-          'Do you want to delete these files from your source directory?',
-        default: false,
-      },
-    ]);
-
-    if (confirmDelete) {
-      for (const deletedFile of deletedFiles) {
-        try {
-          await fs.unlink(deletedFile);
-        } finally {
+      if (confirmDelete) {
+        for (const deletedFile of deletedFiles) {
+          try {
+            await fs.unlink(deletedFile);
+          } finally {
+          }
         }
       }
     }
   }
-  }
-
 
   state.config.outputDir = 'merge';
   state.forceCssFormatting = true;
-  await build (state.config);
+  await build(state.config);
   state.config.outputDir = state.config.initOutputDir;
   state.forceCssFormatting = false;
-  
-  await git.add ('.');
-  await git.commit ('Commit build.');
 
-  await git.checkout ('master');
+  await git.add(['merge/**/*']);
+  await git.commit('Commit build.');
 
+  await git.checkout('master');
   await fsExtra.copy(state.config.teamRepo, 'merge');
 
-  
-  const mergeHtmlFiles = await globby ('merge/**/*.html');
-  const mergeCssFiles = await globby ('merge/**/*.css');
-  const mergeReactFiles = await globby (['merge/**/*.jsx', 'merge/**/*.tsx']);
+  const mergeHtmlFiles = await globby('merge/**/*.html');
+  const mergeCssFiles = await globby('merge/**/*.css');
+  const mergeReactFiles = await globby(['merge/**/*.jsx', 'merge/**/*.tsx']);
 
-  
-  for(const htmlFile of mergeHtmlFiles)
-  {
-    const html = await fs.readFile (htmlFile, 'utf-8');
-    const out = await state.htmlFormatter (html);
-    await fs.writeFile (htmlFile, out);
+  for (const htmlFile of mergeHtmlFiles) {
+    const html = await fs.readFile(htmlFile, 'utf-8');
+    const out = await state.htmlFormatter(html);
+    await fs.writeFile(htmlFile, out);
   }
-  for(const cssFile of mergeCssFiles)
-    {
-      const css = await fs.readFile (cssFile, 'utf-8');
-      const out = await state.cssFormatter (css);
-      await fs.writeFile (cssFile, out);
-    }
-    for(const reactFile of mergeReactFiles)
-      {
-        const react = await fs.readFile (reactFile, 'utf-8');
-        const out = reactFile.endsWith ('.jsx') ? await state.jsFormatter (react) : await state.tsFormatter (react);
-        await fs.writeFile (reactFile, out);
-      }
+  for (const cssFile of mergeCssFiles) {
+    const css = await fs.readFile(cssFile, 'utf-8');
+    const out = await state.cssFormatter(css);
+    await fs.writeFile(cssFile, out);
+  }
+  for (const reactFile of mergeReactFiles) {
+    const react = await fs.readFile(reactFile, 'utf-8');
+    const out = reactFile.endsWith('.jsx')
+      ? await state.jsFormatter(react)
+      : await state.tsFormatter(react);
+    await fs.writeFile(reactFile, out);
+  }
 
-  await git.add ('.');
-  await git.commit ('Commit merge team repo');
+  await git.add(['merge/**/*']);
+  await git.commit('Commit merge team repo');
 
-  await git.checkout (currentBranch);
+  await git.checkout(currentBranch);
 
   try {
     await git.merge(['master']);
-
   } catch (e) {
-    console.warn('Merge conflicts in build detected. Resolve them in the merge folder.');
+    console.warn(
+      'Merge conflicts in build detected. Resolve them in the merge folder.'
+    );
 
     const { confirmMerge } = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirmMerge',
-        message:
-          'Has the merge been resolved?',
+        message: 'Has the merge been resolved?',
         default: false,
       },
     ]);
 
-    if (!confirmMerge)
-      return;
+    if (!confirmMerge) return;
 
     await git.add('.');
     await git.commit('Resolve merge conflicts');
   }
-
 
   /*
   const htmlDeleted = [];
