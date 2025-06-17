@@ -161,12 +161,14 @@ When you're done and you've submitted your work and it has been merged successfu
 2. Pull from master.
 3. If your personal repo is not online, just local, the working branch will be merged back into master.
 
-`copyFiles` in config is automatically set to `teamGit`repo if left unset or set to `true`. You need the full content available relatively during development.
-
 #### 🎯 npx resolve --name `<class name>`
 
 Regenerate scope hash and class name based on current team repo state.
 Use this to resolve collisions that happen because other people added same class name as you to the repo.
+
+#### 📝 File copying
+
+`copyFiles` in config is automatically set to `teamGit`repo if left unset or set to `true`. You need the full content available relatively during development.
 
 ### 🧼 Formatters
 
