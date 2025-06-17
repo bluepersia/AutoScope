@@ -892,7 +892,6 @@ async function build(
         console.error('❌ Failed to check Git status:', err);
       }
     }
-  console.log('scoped-css-module: build complete');
 }
 
 function removeIdFromCache(filePath) {
