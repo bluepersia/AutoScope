@@ -37,7 +37,7 @@ async function syncTeamRepo(
 
   //Backup
   await git.add([`${srcRoot}/**/*`]);
-  await git.commit('Pre-sync backup', [], { '--allow-empty': null });
+  await git.commit('Pre-sync backup');
   async function tagExists(tagName) {
     const tags = await git.tags(); // returns { all: [...], latest: '...' }
     return tags.all.includes(tagName);

@@ -16,6 +16,8 @@
     "install-scope-react": "./bin/install-scope-react.js",
     "pull": "./bin/pullTeamRepo.js",
     "reset-pull": "./bin/resetPull.js",
+    "reset": "./bin/reset.js",
+    "add": "./bin/add.js",
     "where": "./bin/where.js",
     "resolve": "./bin/pullTeamRepo.js",
     "fork": "./bin/fork.js",

@@ -214,17 +214,15 @@ async function main(isRetry = false) {
 
   await myGit.add('.');
   await teamGit.add('.');
-  await myGit.commit('Save current branch changes before switching', [], {
-    '--allow-empty': null,
-  });
-  await teamGit.commit('Save current branch changes before switching');
+  await myGit.commit('Save WIP before master backup');
+  await teamGit.commit('Save WIP before pulling master');
 
   await teamGit.checkout('master');
 
-  //Backup
+  //Backupteam
   await teamGit.add('.');
   if (!isRetry) {
-    await teamGit.commit('Pre-pull backup', [], { '--allow-empty': null });
+    await teamGit.commit('Pre-pull backup');;
     if (await tagExists (teamGit, 'pull-backup'))
       await teamGit.tag(['-d', 'pull-backup']);
     if (await tagExists (myGit, 'pull-backup'))
@@ -358,19 +356,17 @@ async function main(isRetry = false) {
   } catch (e) {
     console.warn('Team repo merge conflicts detected. Please resolve them.');
 
-    const { confirmMerge } = await inquirer.prompt([
+    const { commitMsg } = await inquirer.prompt([
       {
-        type: 'confirm',
-        name: 'confirmMerge',
-        message: 'Has the merge been resolved?',
-        default: false,
+        type: 'input',
+        name: 'commitMsg',
+        message: 'What is the commit message for the merge? (if none is specified, a generic message will be used)'
       },
     ]);
 
-    if (!confirmMerge) return;
 
     await teamGit.add('.');
-    await teamGit.commit('Resolve merge conflicts');
+    await teamGit.commit(commitMsg || 'Resolve merge conflicts');
   }
 
   await initTeamRepoHashMap();
