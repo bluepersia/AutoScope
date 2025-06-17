@@ -1,6 +1,6 @@
 ![Tool Logo](./assets/logo.jpg)
 
-Welcome to AutoScope compiler for CSS and HTML (React is in the works)!
+Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
 The aim of this tool:
 
