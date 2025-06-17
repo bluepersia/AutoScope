@@ -19,6 +19,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { pathToFileURL } from 'url';
 import { createRequire } from 'module';
+import simpleGit from 'simple-git';
 
 let prettier;
 let ESLint;
@@ -132,6 +133,16 @@ function initTeamSrc() {
     state.config.teamSrc = ['src'];
   else if (state.config.teamSrc && !Array.isArray(state.config.teamSrc))
     state.config.teamSrc = [state.config.teamSrc];
+
+  if (state.config.teamGit)
+  {
+    state.teamGit = simpleGit(`${process.cwd()}/${state.config.teamGit}`);
+
+    if (state.config.teamSrc.length <= 1)
+    state.config.outputDir = `${state.config.teamGit}/${state.config.teamSrc[0]}`;
+  else 
+    state.config.outputDir = state.config.teamGit;
+  }
 }
 function initFormatters() {
 
@@ -826,7 +837,7 @@ async function build(
     `${state.config.inputDir}/**/*.tsx`,
   ]);
 
-  if (overwrite && state.config.teamGit !== state.config.outputDir) {
+  if (overwrite && state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir) {
     if (fs.existsSync(state.config.outputDir))
       await fs.promises.rm(state.config.outputDir, {
         recursive: true,
@@ -868,6 +879,19 @@ async function build(
     findDomsInCache(jsFiles)
   );
 
+  if(state.teamGit)
+    {
+      try 
+      {
+        const status = await state.teamGit.status();
+        const modifiedFiles = status.modified.length + status.created.length + status.deleted.length + status.renamed.length;
+        console.log (`✏️ ${modifiedFiles} file(s) changed.`);
+      }
+      catch(err)
+      {
+        console.error('❌ Failed to check Git status:', err);
+      }
+    }
   console.log('scoped-css-module: build complete');
 }
 
