@@ -226,5 +226,5 @@ For each formatter, set up the config (if needed) in the same `formatters` objec
 | `teamSrc`        | string/array    | `false`  | The src directories within the team git repo e.g.`src`         |
 | `copyFiles`      | string/bool/arr | `false`  | Copy directory content to the output dir, as is                |
 | `globalCss`      | glob/globs      | ``       | Files to exclude from scoping (for global styles)              |
-| `flattenCombis`  | array/boolean   | `[]`     | Flatten combinators, e.g. from > to _a_                        |
+| `flattenCombis`  | array/boolean   | `[]`     | Flatten combinators, e.g. from `>` to `_a_`                    |
 | `overrideConfig` | object          | `{}`     | Override configs for certain files. Key = glob, value = object |
