@@ -510,7 +510,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           filePath: path.join(state.config.outputDir, filePath),
           cssRoot: root,
         };
-        console.log (fileFound.filePath);
+
         filesFound[file] = fileFound.filePath;
         let targetClass = null;
         let insertIndex = null;
@@ -608,7 +608,6 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           });
        
         
-            console.log ('1');
 
         // Step 4: Remove collected rules
         rulesToRemove.forEach((rule) => rule.remove());
@@ -621,9 +620,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     }
 
     if (fileFound) outPath = fileFound.filePath;
-    
-    if (fileFound)
-      console.log ( fileFound.filePath);
+   
 
     const raw = fileFound?.cssRoot.toString() || result.css;
 

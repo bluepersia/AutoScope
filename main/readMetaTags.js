@@ -74,7 +74,6 @@ async function readMetaTags(
       else 
       {
         thisMetaTags = js.autoScopeArray || (await getCssFilesInSameDir (filePath)).map (cssFile => ({name: 'auto-scope', content: cssFile}))
-        console.log (thisMetaTags);
       }
       
     }
@@ -126,8 +125,7 @@ async function readMetaTags(
       metaCache[cssFile].push(domObj);
     }
 
-    //console.log ("Meta cache: ", metaCache);
-    //console.log ("Meta tag map: ", metaTagMap);
+
   };
 
   return Array.from(cssDeps);

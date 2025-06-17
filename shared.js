@@ -216,7 +216,7 @@ function getFreeId(scopeName) {
 function removeIdFromCache(scopeName, id) {
   if (!state.scopeIDsCache[scopeName]) return;
 
-  console.log('removed: ', id);
+
   state.scopeIDsCache[scopeName] = state.scopeIDsCache[scopeName].map((obj) =>
     obj.id === id ? { id } : obj
   );
@@ -369,8 +369,7 @@ function prefixGlobsWithDir(patterns, dir) {
 
 function findHtmlDeps(cssFiles, type = 'html') {
   const htmlDeps = new Set();
-  //console.log (cssFiles);
-  //console.log (Object.keys (metaCache));
+
   for (const cssFile of cssFiles) {
     if (state.metaCache[cssFile]) {
       for (const htmlFile of state.metaCache[cssFile]) {

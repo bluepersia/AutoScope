@@ -52,7 +52,6 @@ const waitForIdle = () =>
 
 // 1. Load your config
 let config = await loadConfig();
-console.log(config);
 
 let runtimeMap;
 const mapPath = path.join(
@@ -83,7 +82,6 @@ await build(config, runtimeMap, true);
 if (!args.includes('--watch')) return;
 
 config = state.config;
-console.log(state.config.copyFiles);
 const watchArr = [];
 if (config.inputHtml) watchArr.push(...config.inputHtml);
 

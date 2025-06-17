@@ -57,7 +57,7 @@ async function onChange(filePaths) {
 }
 
 async function copyFile(srcPath) {
-  console.log('Copy: ', srcPath);
+
   await fsExtra.copy(
     srcPath,
     `${state.config.outputDir}/${path.relative(

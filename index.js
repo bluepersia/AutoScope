@@ -540,7 +540,6 @@ function initFormatters() {
       );
   }
 
-  console.log (state.jsFormatters);
 }
 
 async function initTeamRepoHashMap() {
@@ -698,7 +697,7 @@ function startDevServer() {
 
       //await fs.promises.rm('dev-temp', { recursive: true, force: true });
       //await fsExtra.copy(state.config.teamRepo, 'dev-temp');
-      console.log('Read team repo');
+     
       res.end('Read team repo');
     } else if (req.url === '/resolve-build') {
       res.end('Resolved.');
@@ -830,7 +829,7 @@ async function build(
     `${state.config.inputDir}/**/*.js`,
     `${state.config.inputDir}/**/*.ts`,
   ]);
-  console.log (`${state.config.inputDir}/**/*.js`);
+
   const cssFiles = await globby(`${state.config.inputDir}/**/*.css`);
   const reactFiles = await globby([
     `${state.config.inputDir}/**/*.jsx`,
