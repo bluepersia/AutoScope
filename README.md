@@ -163,6 +163,11 @@ When you're done and you've submitted your work and it has been merged successfu
 
 `copyFiles` in config is automatically set to `teamGit`repo if left unset or set to `true`. You need the full content available relatively during development.
 
+#### 🎯 npx resolve --name <class name>
+
+Regenerate scope hash and class name based on current team repo state.
+Use this to resolve collisions that happen because other people added same class name as you to the repo.
+
 ### 🧼 Formatters
 
 AutoScope has integrated support for:
