@@ -124,7 +124,7 @@ async function pull(devMd = false, isRetry = false) {
     await gitAdd(myGit, state.config.inputDir);
     await myGit.commit('Commit final build');
 
-    await myGit.checkout ('snapshot');
+    await myGit.checkout (`${currentBranch.my}-snapshot`);
     await fsExtra.remove ('merge');
     await myGit.rm (["-r", 'merge']);
     await myGit.commit ('Commit snapshot merge delete');
@@ -371,7 +371,7 @@ async function main(isRetry = false) {
 
   await initTeamRepoHashMap();
 
-  await myGit.checkout ('snapshot');
+  await myGit.checkout (`${currentBranch.my}-snapshot`);
   state.config.outputDir = 'merge';
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
@@ -485,14 +485,14 @@ async function main(isRetry = false) {
   }
   await myGit.commit ('Commit any deleted content');
   await myGit.checkout (currentBranch.my);
-  await myGit.mergeFromTo('snapshot', currentBranch.my);
+  await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
   state.config.outputDir = 'merge';
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
   await gitAdd (myGit, 'merge');
   await myGit.commit('Commit build.');
 
-  await myGit.checkout('snapshot');
+  await myGit.checkout(`${currentBranch.my}-snapshot`);
   await copyTeamToMergeFolder ();
 
   await formatMergeFiles();
@@ -503,7 +503,7 @@ async function main(isRetry = false) {
   await myGit.checkout(currentBranch.my);
 
   try {
-    await myGit.mergeFromTo('snapshot', currentBranch.my);
+    await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
   } catch (e) {
     console.warn(
       'Merge conflicts in build detected. Resolve them in the merge folder.'

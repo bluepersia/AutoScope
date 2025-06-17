@@ -45,8 +45,8 @@ async function main() {
     if((await teamGit.branch ()).all.includes (name))
       await teamGit.deleteLocalBranch (name);
 
-    if(((await myGit.branch ()).all.includes ('snapshot')))
-        await myGit.branch (['-D', 'snapshot']);
+    if(((await myGit.branch ()).all.includes (`${name}-snapshot`)))
+        await myGit.branch (['-D', `${name}-snapshot`]);
 }
 
 main();

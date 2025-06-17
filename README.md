@@ -139,7 +139,7 @@ Set `teamGit` to the project repo, and `teamSrc` to the folder/s that contains t
 
 #### 🔄 Workflow
 
-##### 🚀 npx begin <branch name>
+##### 🚀 npx begin `<branch name>`
 
 Before you begin your work, call this command. **Important:** this will download the team repo content back to your src on a new branch.
 
@@ -153,7 +153,7 @@ Before you begin your work, call this command. **Important:** this will download
 
 Stay up to date with the master branch by regularly calling this command. Your scoped work will be merged in a temporary folder called `merge`, which is where you have to resolve conflicts, if there are any for your scoped work.
 
-#### 🧹 npx end <branch name>
+#### 🧹 npx end `<branch name>`
 
 When you're done and you've submitted your work and it has been merged successfully to the master branch, call this command to:
 
@@ -163,7 +163,7 @@ When you're done and you've submitted your work and it has been merged successfu
 
 `copyFiles` in config is automatically set to `teamGit`repo if left unset or set to `true`. You need the full content available relatively during development.
 
-#### 🎯 npx resolve --name <class name>
+#### 🎯 npx resolve --name `<class name>`
 
 Regenerate scope hash and class name based on current team repo state.
 Use this to resolve collisions that happen because other people added same class name as you to the repo.

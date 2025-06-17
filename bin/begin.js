@@ -48,10 +48,10 @@ async function main() {
     await gitAdd (myGit, state.config.inputDir)
     await myGit.commit ('Team sync');
     
-    if(((await myGit.branch ()).all.includes ('snapshot')))
-        await myGit.branch (['-D', 'snapshot']);
+    if(((await myGit.branch ()).all.includes (`${name}-snapshot`)))
+        await myGit.branch (['-D', `${name}-snapshot`]);
 
-    await myGit.checkoutLocalBranch ('snapshot');
+    await myGit.checkoutLocalBranch (`${name}-snapshot`);
     await teamGit.checkoutLocalBranch(name);
     await myGit.checkout (name);
  
