@@ -65,7 +65,7 @@ function processElement(el, importedScope, maps) {
   // — build nested‑subscope roots as before —
   const nestedSubscopeRoots = new Set();
   for (const otherScope of maps) {
-    if (otherScope.scopeName === scopeName) continue;
+    //if (otherScope.scopeName === scopeName) continue;
 
     /*
     if (!useFlat)
@@ -81,7 +81,7 @@ function processElement(el, importedScope, maps) {
     }*/
 
     for (const rootEl of el.querySelectorAll(`.${otherScope.scopeName}`)) {
-      if (!rootEl.dataset.scope || rootEl.dataset.scope == otherScope.scopeId) {
+      if (!otherScope.scopeId|| rootEl.dataset.scope == otherScope.scopeId) {
         nestedSubscopeRoots.add(rootEl);
       }
     }
@@ -120,31 +120,18 @@ function processElement(el, importedScope, maps) {
   markMutate(el);
 
   function matchEl(el, raw, newClass) {
+
+    if (typeof newClass === 'object')
+    {
+      return;
+    }
+    else 
     if (el.matches(stripPseudoSelectors(raw))) {
       if (typeof newClass === 'object') {
-        function processNode(el, i = newClass.chain.length - 1) {
-          while (allCombisKeys.includes(newClass.chain[i])) i--;
-
-          const segment = newClass.chain[i].split(':')[0];
-          const segmentParts = segment.split('__');
-          const finalPart = segmentParts[segmentParts.length - 1];
-          const flatSeg = newClass.flatChain[i];
-          if (el.matches(finalPart)) {
-            i--;
-            markMutate(el);
-            el.newClasses.push(flatSeg);
-          }
-
-          if (i < 0) return;
-
-          if (el.parentElement) processNode(el.parentElement, i);
-        }
-        processNode(el);
-      } else {
         markMutate(el);
         el.newClasses.push(newClass.replaceAll('.', ''));
-      }
     }
+  }
   }
 
   function addHashToBEMName(el, ignoreArr = []) {
@@ -181,6 +168,27 @@ function processElement(el, importedScope, maps) {
   if (useFlat) {
     // — check the root itself —
     for (const { raw, newClass } of selMap) {
+      if (typeof newClass === 'object')
+      {
+        const chain = newClass.chain;
+        const flatChain = newClass.flatChain;
+
+      selectSeg (0, el);
+      function selectSeg (index, node)
+      {
+        if (index >= chain.length)
+          return;
+        
+        node.querySelectorAll (`:scope ${chain[index]}`).forEach (match => 
+        {
+          markMutate (match);
+          match.newClasses.push (flatChain[index]);
+          selectSeg (index + 1, match)
+        }
+        )
+      }
+    }
+      else 
       matchEl(el, raw, newClass);
     }
   } else addHashToBEMName(el);
@@ -190,7 +198,7 @@ function processElement(el, importedScope, maps) {
     const desc = el.querySelectorAll('*');
 
     const isDescendantOf = (node, parents) => {
-      while (node.parentNode) {
+      while (node.parentNode && node.parentElement !== el) {
         if (parents.has(node.parentNode)) return true;
         node = node.parentNode;
       }
@@ -227,32 +235,34 @@ function processElement(el, importedScope, maps) {
       return false;
     };
 
-    for (const el of desc) {
-      processExclusion(el);
+    for (const descEl of desc) {
+      processExclusion(descEl);
 
-      if (isDescendantOf(el, nestedSubscopeRoots)) continue;
+      if (isDescendantOf(descEl, nestedSubscopeRoots)) continue;
 
-      if (isInsideIgnoredScope(el)) continue;
+      if (isInsideIgnoredScope(descEl)) continue;
 
-      const isIgnoreScope = ignoreScopeElements.has(el);
+      const isIgnoreScope = ignoreScopeElements.has(descEl);
 
-      let ignoreArr = el.dataset.break
-        ? el.dataset.break.split(',')
+      let ignoreArr = descEl.dataset.break
+        ? descEl.dataset.break.split(',')
         : isIgnoreScope
-        ? [...el.classList]
+        ? [...descEl.classList]
         : [];
 
       if (useFlat) {
         if (ignoreArr.length > 0) {
-          markMutate(el);
+          markMutate(descEl);
           el.newClasses.push(...ignoreArr);
         }
         for (const { childSel, newClass } of selMap) {
+          const isScopeSel = childSel === `.${scopeName}` || childSel.startsWith(`.${scopeName}.`) || childSel.startsWith (`.${scopeName}--`) || childSel.startsWith (`.${scopeName}:`);
+          if (isScopeSel) continue;
           if (ignoreArr.find((val) => childSel.endsWith(`.${val}`))) continue;
 
-          matchEl(el, childSel, newClass);
+          matchEl(descEl, childSel, newClass);
         }
-      } else addHashToBEMName(el, ignoreArr);
+      } else addHashToBEMName(descEl, ignoreArr);
     }
   }
 
@@ -283,7 +293,7 @@ function processEl(el, hash = '', scopeId = '') {
     );
 
     for (const match of matches) {
-      if (!match.dataset.scope || match.dataset.scope == importedScope.scopeId)
+      if (!importedScope.scopeId || match.dataset.scope == importedScope.scopeId)
         toMutate.push(...processElement(match, importedScope, maps));
     }
     continue;

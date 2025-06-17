@@ -7,15 +7,14 @@ import {
   initInputReact,
   initTeamRepoHashMap,
   initFormatters,
+  initTeamSrc,
   checkDevMode,
   build,
-  init,
 } from '../index.js';
-import { setConfig, copyFiles, state } from '../shared.js';
+import { state } from '../shared.js';
 import { syncTeamRepo } from '../main/teamRepo.js';
 import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
-import http from 'http';
 import { globby } from 'globby';
 import postcss from 'postcss';
 import fs from 'fs/promises';
@@ -23,9 +22,40 @@ import fsDefault from 'fs';
 import fg from 'fast-glob';
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
+import {readFilesUsing} from './where.js';
 
-const git = simpleGit(process.cwd());
-let currentBranch;
+const config = (state.config = await loadConfig());
+const myGit = simpleGit(process.cwd());
+const teamGit = simpleGit(`${process.cwd()}/${config.teamGit}`);
+
+async function tagExists(git, tagName) {
+  const tags = await git.tags(); // returns { all: [...], latest: '...' }
+  return tags.all.includes(tagName);
+}
+
+async function gitAdd (git, dir)
+{
+  const files = await globby([ `${dir}/**/*`]);
+  await git.add(files);
+}
+async function copyTeamToMergeFolder ()
+{
+  if(state.config.teamSrc.length <= 1)
+    await fsExtra.copy(`${state.config.teamGit}/${state.config.teamSrc[0]}`, 'merge', {
+      preserveTimestamps:true,
+      filter: (srcPath) => !srcPath.includes('.git')
+    });
+  else 
+  {
+    for (const src of state.config.teamSrc)
+      await fsExtra.copy (`${state.config.teamGit}/${src}`, `merge/${src}`, {
+      preserveTimestamps:true,
+        filter: (srcPath) => !srcPath.includes('.git')
+      });
+  }
+}
+
+const currentBranch = {};
 
 const args = process.argv.slice(2); // Skip first two elements (node and script path)
 
@@ -37,22 +67,45 @@ args.forEach((arg, index) => {
   }
 });
 
-const config = (state.config = await loadConfig());
-await initInputCss(config);
-await initInputHtml(config);
-await initInputReact(config);
 await initCombinatorFlattening(config);
 await initFormatters();
+initTeamSrc();
 state.config.initOutputDir = state.config.outputDir;
+
 state.config.initUsePrettier = state.config.usePrettier;
 
 checkDevMode(pull);
 
 let devMode;
-async function pull(devMd = false) {
+
+async function formatMergeFiles() {
+  return;
+  const mergeHtmlFiles = await globby('merge/**/*.html');
+  const mergeCssFiles = await globby('merge/**/*.css');
+  const mergeReactFiles = await globby(['merge/**/*.jsx', 'merge/**/*.tsx']);
+
+  for (const htmlFile of mergeHtmlFiles) {
+    const html = await fs.readFile(htmlFile, 'utf-8');
+    const out = await state.htmlFormatter(html);
+    await fs.writeFile(htmlFile, out);
+  }
+  for (const cssFile of mergeCssFiles) {
+    const css = await fs.readFile(cssFile, 'utf-8');
+    const out = await state.cssFormatter(css);
+    await fs.writeFile(cssFile, out);
+  }
+  for (const reactFile of mergeReactFiles) {
+    const react = await fs.readFile(reactFile, 'utf-8');
+    const out = reactFile.endsWith('.jsx')
+      ? await state.jsFormatter(react)
+      : await state.tsFormatter(react);
+    await fs.writeFile(reactFile, out);
+  }
+}
+async function pull(devMd = false, isRetry = false) {
   devMode = devMd;
 
-  if (!(await main())) return;
+  if (!(await main(isRetry))) return;
 
   await syncTeamRepo(state.config, (name && [name]) || [], null, 'merge');
 
@@ -61,13 +114,23 @@ async function pull(devMd = false) {
   if (!devMode && !name) {
     await build(state.config);
   }
-  await git.add('.');
-  await git.commit('Commit final build');
-  await git.checkout('master');
-  await fsExtra.remove('merge');
-  await git.add('.');
-  await git.commit('Commit master');
-  await git.checkout(currentBranch);
+
+  if (name)
+    await readFilesUsing (name);
+
+  setTimeout (async () => {
+    await gitAdd (myGit, state.config.outputDir);
+    await myGit.rm (["-r", 'merge']);
+    await gitAdd(myGit, state.config.inputDir);
+    await myGit.commit('Commit final build');
+
+    await myGit.checkout ('snapshot');
+    await fsExtra.remove ('merge');
+    await myGit.rm (["-r", 'merge']);
+    await myGit.commit ('Commit snapshot merge delete');
+    await myGit.reset(['--hard', currentBranch.my]);
+    await myGit.checkout (currentBranch.my);
+  }, 1000);
 }
 
 async function readFileSafe(filepath) {
@@ -110,7 +173,7 @@ function htmlUsesClass(htmlContent, className) {
   return regex.test(htmlContent);
 }
 
-async function main() {
+async function main(isRetry = false) {
   const cwd = process.cwd();
 
   const inputDir = state.config.inputDir;
@@ -119,41 +182,29 @@ async function main() {
     process.exit(1);
   }
 
-  /*
-  const htmlFiles = allFilesBefore.filter((f) => f.endsWith(".html"));
-  const htmlUsingHash = new Set();
-  for (const htmlFile of htmlFiles) {
-    const content = await readFileSafe(path.join(cwd, htmlFile));
-    for (const { className } of scopeHashes) {
-      if (htmlUsesClass(content, className)) {
-        htmlUsingHash.add(htmlFile);
-        break;
-      }
-    }
-  }*/
+  currentBranch.my = (await myGit.revparse(['--abbrev-ref', 'HEAD'])).trim();
+  currentBranch.team = (await teamGit.revparse(['--abbrev-ref', 'HEAD'])).trim();
 
-  //await build(config);
-
-  /*
-  if (devMode) {
-    copyFiles('dev-temp', config.outputDir);
-    await copyGlobalCss('dev-temp', config.outputDir);
-  }*/
-
-  currentBranch = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
-
-  if (currentBranch === 'master')
+  if (currentBranch.my === 'master' || currentBranch.team === 'master')
     throw Error(
-      'You are already on the master branch! To do a dev-pull, you must be on a different branch for merging.'
+      'You are on the master branch! To do a dev-pull, you must be on a different branch for merging.'
     );
 
-  const allFilesBefore = await fg([`${state.config.teamRepo}/**/*`], {
-    cwd,
-    dot: true,
-    onlyFiles: true,
-  });
+  const allFilesBefore = await Promise.all(
+    state.config.teamSrc.map(
+      async (src) =>
+        await fg(`${state.config.teamGit}/${src}/**/*`, {
+          cwd,
+          dot: true,
+          onlyFiles: true,
+        })
+    )
+  );
 
-  const cssFiles = allFilesBefore.filter((f) => f.endsWith('.css'));
+  const cssFiles = allFilesBefore
+    .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
+    .flat();
+
   const scopeHashes = [];
   for (const cssFile of cssFiles) {
     const content = await readFileSafe(path.join(cwd, cssFile));
@@ -161,32 +212,73 @@ async function main() {
     scopeHashes.push(...hashes);
   }
 
-  await git.add('.');
-  await git.commit('Save current branch changes before switching');
-  await git.checkout('master');
-
-  await fsExtra.copy(state.config.teamRepo, 'merge', {
-    filter: (src) => {
-      const rel = path.relative(state.config.teamRepo, src);
-      return !rel.startsWith('.git'); // skip .git and anything inside
-    },
+  await myGit.add('.');
+  await teamGit.add('.');
+  await myGit.commit('Save current branch changes before switching', [], {
+    '--allow-empty': null,
   });
+  await teamGit.commit('Save current branch changes before switching');
+
+  await teamGit.checkout('master');
+
+  //Backup
+  await teamGit.add('.');
+  if (!isRetry) {
+    await teamGit.commit('Pre-pull backup', [], { '--allow-empty': null });
+    if (await tagExists (teamGit, 'pull-backup'))
+      await teamGit.tag(['-d', 'pull-backup']);
+    if (await tagExists (myGit, 'pull-backup'))
+      await myGit.tag(['-d', 'pull-backup']);
+    await teamGit.tag(['pull-backup']);
+    await myGit.tag(['pull-backup']);
+  }
+
+  /*
+  for (const teamSrc of state.config.teamSrc) {
+    await fsExtra.copy(
+      `${state.config.teamGit}/${teamSrc}`,
+      state.config.teamSrc.length <= 1 ? 'merge' : `merge/${teamSrc}`,
+      {
+        filter: (src) => {
+          const rel = path.relative(
+            state.config.teamSrc.length <= 1
+              ? `${state.config.teamGit}/${teamSrc}`
+              : state.config.teamGit,
+            src
+          );
+          return !rel.startsWith('.git'); // skip .git and anything inside
+        },
+      }
+    );
+  }*/
+   // await copyTeamToMergeFolder ();
+ // await formatMergeFiles();
 
   try {
-    await git.pull('origin', 'master');
+    await teamGit.pull('origin', 'master');
   } catch (err) {
     console.error('Git pull failed:', err);
-    await fsExtra.remove('merge');
+   // await fsExtra.remove('merge');
+    //await myGit.deleteLocalBranch('merge');
+    return false;
   }
 
   async function readFilesAfter() {
-    const allFilesAfter = await fg([`${state.config.teamRepo}/**/*`], {
-      cwd,
-      dot: true,
-      onlyFiles: true,
-    });
+    const allFilesAfter = await Promise.all(
+      state.config.teamSrc.map(
+        async (src) =>
+          await fg(`${state.config.teamGit}/${src}/**/*`, {
+            cwd,
+            dot: true,
+            onlyFiles: true,
+          })
+      )
+    );
 
-    const cssFilesAfter = allFilesAfter.filter((f) => f.endsWith('.css'));
+    const cssFilesAfter = allFilesAfter
+      .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
+      .flat();
+
     const scopeHashesAfter = [];
     for (const cssFile of cssFilesAfter) {
       const content = await readFileSafe(path.join(cwd, cssFile));
@@ -205,26 +297,18 @@ async function main() {
     (h) => !scopeHashes.find((obj) => obj.hash === h)
   );
 
-  /*
-  if (config.teamRepo !== config.outputDir) {
-    if (fsDefault.existsSync(config.outputDir))
-      await fs.rm(config.outputDir, { recursive: true, force: true });
+  //await gitAdd (myGit, 'merge');
 
-    await fsExtra.copy(config.teamRepo, config.outputDir);
-  }
-*/
+  //await myGit.commit('Save master before returning');
 
-  await git.add('.');
-
-  await git.commit('Save master before returning');
-
-  await git.checkout(currentBranch);
+  //await myGit.checkout(currentBranch.my);
+  await teamGit.checkout(currentBranch.team);
 
   let myCssFiles;
 
   let collisionOccured = false;
   if (hashesAdded.length > 0) {
-    myCssFiles = await globby(state.config.inputCss);
+    myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     for (const cssFile of myCssFiles) {
       const css = await fs.readFile(cssFile, 'utf-8');
@@ -254,21 +338,23 @@ async function main() {
               decl.remove();
             });
           });
-
-          await fs.writeFile(cssFile, root.toString(), 'utf-8');
+          const out = await state.config.cssFormatter(root.toString());
+          await fs.writeFile(cssFile, out, 'utf-8');
         }
       }
     }
   }
 
   if (collisionOccured) {
-    await fsExtra.remove('merge');
-    await pull();
+    //await fsExtra.remove('merge');
+   // await myGit.deleteLocalBranch('merge');
+    await await pull(devMode, true);
     return;
   }
 
+
   try {
-    await git.merge(['master']);
+    await teamGit.mergeFromTo('master', currentBranch.team);
   } catch (e) {
     console.warn('Team repo merge conflicts detected. Please resolve them.');
 
@@ -283,18 +369,45 @@ async function main() {
 
     if (!confirmMerge) return;
 
-    await git.add('.');
-    await git.commit('Resolve merge conflicts');
+    await teamGit.add('.');
+    await teamGit.commit('Resolve merge conflicts');
   }
 
   await initTeamRepoHashMap();
 
+  await myGit.checkout ('snapshot');
+  state.config.outputDir = 'merge';
+  await build(state.config, null, false, false);
+  state.config.outputDir = state.config.initOutputDir;
+  await gitAdd (myGit, 'merge');
+  await myGit.commit('Commit snapshot build.');
+  
   after = await readFilesAfter();
 
   const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
   const filesDeleted = allFilesBefore
-    .filter((f) => !f.endsWith('.css') && !after.allFilesAfter.includes(f))
-    .map((p) => path.join(config.inputDir, path.relative(config.teamRepo, p)));
+    .map((teamSrc, index) =>
+      teamSrc.filter(
+        (f) => !f.endsWith('.css') && !after.allFilesAfter[index].includes(f)
+      )
+    )
+    .map((teamSrc, index) =>
+      teamSrc.map((p) =>
+        path.join(
+          config.inputDir,
+          path.relative(
+            state.config.teamSrc.length <= 1
+              ? `${state.config.teamGit}/${state.config.teamSrc[index]}`
+              : state.config.teamGit,
+            p
+          )
+        )
+      )
+    )
+    .flat()
+    .filter((filePath) => {  
+      return fsDefault.existsSync(filePath)
+});
 
   const hashDeleted = [...beforeHashMap.entries()]
     .filter(([hash]) => !after.afterHashArr.includes(hash))
@@ -303,10 +416,6 @@ async function main() {
       scopeName: className.replace(/-\w+$/, ''),
     }));
 
-  /*
-  if (devMode)
-    await fsExtra.copy(config.outputDir, 'dev-temp', { overwrite: true });
-*/
   if (filesDeleted.length > 0) {
     console.log('\nThe following files no longer exist in the repo:\n');
     filesDeleted.forEach((file) => console.log('  -', file));
@@ -329,17 +438,18 @@ async function main() {
           console.warn(`Failed to delete ${fileRel}: ${err.message}`);
         }
       }
+      await myGit.add (filesDeleted);
     }
   }
 
   if (hashDeleted.length > 0) {
-    if (!myCssFiles) myCssFiles = await globby(state.config.inputCss);
+    if (!myCssFiles) myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     const deletedFiles = [];
 
     for (const { hash } of hashDeleted) {
       for (const srcPath of myCssFiles) {
-        const content = await fs.promises.readFile(srcPath, 'utf8');
+        const content = await fs.readFile(srcPath, 'utf8');
         if (
           content.includes(`--scope-hash: ${hash}`) ||
           content.includes(`--scope-hash:${hash}`)
@@ -373,51 +483,31 @@ async function main() {
           } finally {
           }
         }
+        await myGit.add (deletedFiles);
       }
     }
   }
-
+  await myGit.commit ('Commit any deleted content');
+  await myGit.checkout (currentBranch.my);
+  await myGit.mergeFromTo('snapshot', currentBranch.my);
   state.config.outputDir = 'merge';
-  state.forceCssFormatting = true;
-  await build(state.config);
+  await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
-  state.forceCssFormatting = false;
+  await gitAdd (myGit, 'merge');
+  await myGit.commit('Commit build.');
 
-  await git.add(['merge/**/*']);
-  await git.commit('Commit build.');
+  await myGit.checkout('snapshot');
+  await copyTeamToMergeFolder ();
 
-  await git.checkout('master');
-  await fsExtra.copy(state.config.teamRepo, 'merge');
+  await formatMergeFiles();
 
-  const mergeHtmlFiles = await globby('merge/**/*.html');
-  const mergeCssFiles = await globby('merge/**/*.css');
-  const mergeReactFiles = await globby(['merge/**/*.jsx', 'merge/**/*.tsx']);
+  await gitAdd (myGit, 'merge');
+  await myGit.commit('Commit snapshot progression');
 
-  for (const htmlFile of mergeHtmlFiles) {
-    const html = await fs.readFile(htmlFile, 'utf-8');
-    const out = await state.htmlFormatter(html);
-    await fs.writeFile(htmlFile, out);
-  }
-  for (const cssFile of mergeCssFiles) {
-    const css = await fs.readFile(cssFile, 'utf-8');
-    const out = await state.cssFormatter(css);
-    await fs.writeFile(cssFile, out);
-  }
-  for (const reactFile of mergeReactFiles) {
-    const react = await fs.readFile(reactFile, 'utf-8');
-    const out = reactFile.endsWith('.jsx')
-      ? await state.jsFormatter(react)
-      : await state.tsFormatter(react);
-    await fs.writeFile(reactFile, out);
-  }
-
-  await git.add(['merge/**/*']);
-  await git.commit('Commit merge team repo');
-
-  await git.checkout(currentBranch);
+  await myGit.checkout(currentBranch.my);
 
   try {
-    await git.merge(['master']);
+    await myGit.mergeFromTo('snapshot', currentBranch.my);
   } catch (e) {
     console.warn(
       'Merge conflicts in build detected. Resolve them in the merge folder.'
@@ -434,8 +524,8 @@ async function main() {
 
     if (!confirmMerge) return;
 
-    await git.add('.');
-    await git.commit('Resolve merge conflicts');
+    await gitAdd (myGit, 'merge');
+    await myGit.commit('Resolve merge conflicts');
   }
 
   /*

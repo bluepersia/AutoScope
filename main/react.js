@@ -90,7 +90,7 @@ function extractAndRemoveScope(ast) {
     VariableDeclaration(path) {
       if (path.node.kind === 'const') {
         path.node.declarations.forEach((decl, i) => {
-          if (t.isIdentifier(decl.id, { name: 'scope' }) && t.isArrayExpression(decl.init)) {
+          if (t.isIdentifier(decl.id, { name: 'autoScope' }) && t.isArrayExpression(decl.init)) {
             scopeArray = decl.init.elements.map(e => t.isLiteral(e) ? e.value : generate(e).code);
             path.node.declarations.splice(i, 1);
           }

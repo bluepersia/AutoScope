@@ -5,7 +5,7 @@ import chokidar from 'chokidar';
 import { exec } from 'child_process';
 import { build, onAddedCss } from '../index.js';
 import loadConfig from './loadConfig.js';
-import {state} from "../shared.js";
+import { state } from '../shared.js';
 
 import {
   onRemove,
@@ -22,7 +22,6 @@ let publicTimeout;
 let publicRemovedTimeout;
 const publicChangedFiles = new Set();
 const publicRemovedFiles = new Set();
-
 
 const queueTasks = [];
 let processing = false;
@@ -52,8 +51,8 @@ const waitForIdle = () =>
   });*/
 
 // 1. Load your config
-let config = await loadConfig ();
-console.log (config);
+let config = await loadConfig();
+console.log(config);
 
 let runtimeMap;
 const mapPath = path.join(
@@ -79,29 +78,31 @@ const noJS = args.includes('--noJS');
 
 if (noJS) config.copyJs = false;
 
-build(config, runtimeMap, true).then(() => {
-  config = state.config;
-  console.log (state.config.copyFiles);
-  const watchArr = [];
-  if (config.inputHtml) watchArr.push(...config.inputHtml);
+await build(config, runtimeMap, true);
 
-  if (config.inputCss) watchArr.push(...config.inputCss);
+if (!args.includes('--watch')) return;
 
-  if (config.inputJs) watchArr.push(...config.inputJs);
+config = state.config;
+const watchArr = [];
+if (config.inputHtml) watchArr.push(...config.inputHtml);
 
-  if (config.inputImages) watchArr.push(...config.inputImages);
+if (config.inputCss) watchArr.push(...config.inputCss);
 
-  const watchRoots = Array.from(
-    new Set(
-      watchArr
-        .map((pattern) => pattern.split(/[*{]/)[0]) // "src/"
-        .map((dir) => dir.replace(/\/$/, '')) // trim trailing slash
-        .map((dir) => path.resolve(process.cwd(), dir)) // absolute path
-        .concat(config.inputDir)
-    )
-  );
+if (config.inputJs) watchArr.push(...config.inputJs);
 
-  /*
+if (config.inputImages) watchArr.push(...config.inputImages);
+
+const watchRoots = Array.from(
+  new Set(
+    watchArr
+      .map((pattern) => pattern.split(/[*{]/)[0]) // "src/"
+      .map((dir) => dir.replace(/\/$/, '')) // trim trailing slash
+      .map((dir) => path.resolve(process.cwd(), dir)) // absolute path
+      .concat(config.inputDir)
+  )
+);
+
+/*
 if (config.teamRepo)
 {
 
@@ -160,8 +161,19 @@ console.log('🔍 Watching directories:');
 watchRoots.forEach((d) => console.log('   ', d));
 */
 
-  // 3. Build a single watcher on those roots, with polling & write‑finish:
-  const watcher = chokidar.watch(watchRoots, {
+// 3. Build a single watcher on those roots, with polling & write‑finish:
+const watcher = chokidar.watch(watchRoots, {
+  ignoreInitial: true,
+  usePolling: true,
+  interval: 200,
+  awaitWriteFinish: {
+    stabilityThreshold: 200,
+    pollInterval: 100,
+  },
+});
+
+if (config.copyFiles) {
+  const publicWatcher = chokidar.watch(config.copyFiles, {
     ignoreInitial: true,
     usePolling: true,
     interval: 200,
@@ -171,115 +183,110 @@ watchRoots.forEach((d) => console.log('   ', d));
     },
   });
 
-  if (config.copyFiles) {
-    const publicWatcher = chokidar.watch(config.copyFiles, {
-      ignoreInitial: true,
-      usePolling: true,
-      interval: 200,
-      awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 100,
-      },
-    });
-
-    publicWatcher.on('all', async (event, filePath) => {
-      if (['add', 'change'].includes(event)) {
-        publicChangedFiles.add(filePath);
-        clearTimeout(publicTimeout);
-        publicTimeout = setTimeout(async () => {
-          const files = Array.from(publicChangedFiles);
-          publicChangedFiles.clear();
-          enqueue (async () => { onChangePublic(files); });
-        }, 100);
-      } else if (event === 'unlink') {
-        publicRemovedFiles.add(filePath);
-        clearTimeout(publicRemovedTimeout);
-        publicRemovedTimeout = setTimeout(async () => {
-          const files = Array.from(publicRemovedFiles);
-          publicRemovedFiles.clear();
-          enqueue (async () => { onRemovePublic(files); });
-        }, 100);
-      }
-    });
-  }
-  watcher.on('ready', () => {
-    console.log('👀 Watcher is ready — listening for HTML/CSS changes...');
-  });
-
-  // 4. On any file event, filter by your original glob patterns:
-  function shouldTrigger(filePath) {
-    const rel = path.relative(process.cwd(), filePath);
-
-    // Check against glob patterns
-    //const matchesGlob = watchArr.some((pattern) => minimatch(rel, pattern));
-
-    // Check if file is inside inputDir
-    const isInInputDir =
-      config.inputDir && rel.startsWith(config.inputDir + path.sep);
-
-    return isInInputDir;
-  }
-
-  let buildTimeout;
-  function runBuild() {
-    return;
-    // debounce rapid sequences of events
-    if (buildTimeout) clearTimeout(buildTimeout);
-    buildTimeout = setTimeout(() => {
-      console.log('🔨 Changes detected — running build...');
-      exec('npx scope-css-build', (error, stdout, stderr) => {
-        if (error) {
-          console.error('❌ Build failed:', error.message);
-          return;
-        }
-        if (stdout) console.log(stdout.trim());
-        if (stderr) console.error(stderr.trim());
-      });
-    }, 300);
-  }
-
-  async function waitForFilesExist(
-    filePaths,
-    timeoutMs = 2000,
-    intervalMs = 100
-  ) {
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeoutMs) {
-      const existChecks = filePaths.map((p) => fs.existsSync(p));
-      if (existChecks.every((p) => p === true)) {
-        return true;
-      }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  publicWatcher.on('all', async (event, filePath) => {
+    if (['add', 'change'].includes(event)) {
+      publicChangedFiles.add(filePath);
+      clearTimeout(publicTimeout);
+      publicTimeout = setTimeout(async () => {
+        const files = Array.from(publicChangedFiles);
+        publicChangedFiles.clear();
+        enqueue(async () => {
+          onChangePublic(files);
+        });
+      }, 100);
+    } else if (event === 'unlink') {
+      publicRemovedFiles.add(filePath);
+      clearTimeout(publicRemovedTimeout);
+      publicRemovedTimeout = setTimeout(async () => {
+        const files = Array.from(publicRemovedFiles);
+        publicRemovedFiles.clear();
+        enqueue(async () => {
+          onRemovePublic(files);
+        });
+      }, 100);
     }
+  });
+}
+watcher.on('ready', () => {
+  console.log('🚀 Dev mode started.');
+});
 
-    return false;
+// 4. On any file event, filter by your original glob patterns:
+function shouldTrigger(filePath) {
+  const rel = path.relative(process.cwd(), filePath);
+
+  // Check against glob patterns
+  //const matchesGlob = watchArr.some((pattern) => minimatch(rel, pattern));
+
+  // Check if file is inside inputDir
+  const isInInputDir =
+    config.inputDir && rel.startsWith(config.inputDir + path.sep);
+
+  return isInInputDir;
+}
+
+let buildTimeout;
+function runBuild() {
+  return;
+  // debounce rapid sequences of events
+  if (buildTimeout) clearTimeout(buildTimeout);
+  buildTimeout = setTimeout(() => {
+    console.log('🔨 Changes detected — running build...');
+    exec('npx scope-css-build', (error, stdout, stderr) => {
+      if (error) {
+        console.error('❌ Build failed:', error.message);
+        return;
+      }
+      if (stdout) console.log(stdout.trim());
+      if (stderr) console.error(stderr.trim());
+    });
+  }, 300);
+}
+
+async function waitForFilesExist(
+  filePaths,
+  timeoutMs = 2000,
+  intervalMs = 100
+) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const existChecks = filePaths.map((p) => fs.existsSync(p));
+    if (existChecks.every((p) => p === true)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  // 5. Wire up all events through our filter
-  watcher
-    .on('all', async (event, filePath) => {
-      if (['add', 'change'].includes(event) && shouldTrigger(filePath)) {
-        if (event === 'add' && filePath.endsWith('.css'))
-          onAddedCss([filePath]);
+  return false;
+}
 
-        changedFiles.add(filePath);
-        clearTimeout(timeout);
-        timeout = setTimeout(async () => {
-          const files = Array.from(changedFiles);
-          changedFiles.clear();
-          //await waitForFilesExist(files);
-          enqueue (async () => { onChange(files); });
-        }, 100);
-      } else if (event === 'unlink') {
-        removedFiles.add(filePath);
-        clearTimeout(removedTimeout);
-        removedTimeout = setTimeout(() => {
-          const files = Array.from(removedFiles);
-          removedFiles.clear();
-          enqueue (async () => { onRemove(files); });
-        }, 100);
-      }
-    })
-    .on('error', (err) => console.error('Watcher error:', err));
-});
+// 5. Wire up all events through our filter
+watcher
+  .on('all', async (event, filePath) => {
+    if (['add', 'change'].includes(event) && shouldTrigger(filePath)) {
+      if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
+
+      changedFiles.add(filePath);
+      clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        const files = Array.from(changedFiles);
+        changedFiles.clear();
+        //await waitForFilesExist(files);
+        enqueue(async () => {
+          onChange(files);
+        });
+      }, 100);
+    } else if (event === 'unlink') {
+      removedFiles.add(filePath);
+      clearTimeout(removedTimeout);
+      removedTimeout = setTimeout(() => {
+        const files = Array.from(removedFiles);
+        removedFiles.clear();
+        enqueue(async () => {
+          onRemove(files);
+        });
+      }, 100);
+    }
+  })
+  .on('error', (err) => console.error('Watcher error:', err));

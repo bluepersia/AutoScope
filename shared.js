@@ -4,7 +4,12 @@ import fs from 'fs';
 import * as DomUtils from 'domutils';
 import multimatch from 'multimatch';
 import { Text } from 'domhandler';
-import { default as render } from 'dom-serializer';
+import os from 'os';
+import { selectAll, selectOne } from "css-select";
+import serializeNode from "dom-serializer";
+
+const networkInterfaces = os.networkInterfaces ();
+
 
 let inputDir;
 let outputDir;
@@ -15,7 +20,6 @@ let cssScopes;
 let cssFiles;
 let htmlFiles;
 let devMode = false;
-let scopeHashsMap = {};
 const scopeHashFileMap = {};
 let isBusy;
 let scopeIDsCache = {};
@@ -38,12 +42,14 @@ let config = {
   writeRuntimeMap: false, // Write the map needed for runtime auto-BEM
   copyFiles: false, //Copy rest of files (not html, css, jsx or tsx files)
   contextSymbol: ':', // Stop the path shortener from affecting content with this symbol in class
-  teamRepo: false, // Scan team files for usage and only enable hash/ID if module name is already used
+  teamSrc: null, // Scan team files for usage and only enable hash/ID if module name is already used
+  teamGit: null,
   stripClasses: true, //Strip classes that are never targetted with CSS.
   flattenCombis: [], //Flatten combinators, e.g. > becomes _a_
-  strictBEM: true, //Use - instead of __ after the first occurence
+  strictBEM: false, //Use - instead of __ after the first occurence
   flattenElements: true,
   overrideConfig: {},
+  formatters: {}
 };
 const allCombis = {
   '*': '_all',
@@ -86,6 +92,7 @@ const state = {
   teamRepoHashMap: {},
   isCopySrc: true,
   astCache: {},
+  hashLength: 3
 };
 
 async function setConfig(cfg) {
@@ -150,7 +157,8 @@ function getHashFromSelector(selector) {
   // grab the very first token (split on whitespace or combinators)
   const first = selector.trim().split(/\s+|>|\+|~/)[0];
   // look for a hyphen followed by exactly 6 hex chars at the end
-  const m = first.match(/-([0-9a-fA-F]{6})$/);
+  const regex = new RegExp (`-([0-9a-fA-F]{${state.local.hashLength}})$`)
+  const m = first.match(regex);
   return m ? m[1] : null;
 }
 function getNumberSuffix(str) {
@@ -213,13 +221,23 @@ function removeIdFromCache(scopeName, id) {
     obj.id === id ? { id } : obj
   );
 }
-function generateCssModuleHash(filePath, attempt = 1, options = {}) {
+
+function getMacAddress() {
+  for (const name of Object.keys(networkInterfaces)) {
+    for (const net of networkInterfaces[name]) {
+      if (!net.internal && net.mac !== '00:00:00:00:00:00') {
+        return net.mac.replace(/:/g, ''); // Remove colons
+      }
+    }
+  }
+}
+
+
+function generateCssModuleHash(fileName, attempt = 1, options = {}) {
   const { length = state.config.hashLength || 6, algorithm = 'md5' } = options;
 
   // Normalize to a consistent string
-  const normalized = path.normalize(
-    `${filePath}?attempt=${attempt}?time=${new Date().getTime()}`
-  );
+  const normalized = path.normalize(`${fileName + getMacAddress()}?attempt=${attempt}`);
 
   // Create hash
   const fullHash = crypto
@@ -228,10 +246,10 @@ function generateCssModuleHash(filePath, attempt = 1, options = {}) {
     .digest('hex');
 
   // Return the first `length` chars
-  const hash = `h${attempt}`; // fullHash.slice(0, length);
+  const hash = fullHash.slice(0, length);
 
   if (!/[a-zA-Z]/.test(hash) || state.scopeHashsMap.has(hash))
-    return generateCssModuleHash(filePath, attempt + 1);
+    return generateCssModuleHash(fileName, attempt + 1);
 
   /*
   if (
@@ -243,6 +261,8 @@ function generateCssModuleHash(filePath, attempt = 1, options = {}) {
   return hash;
 }
 function arePathsEqual(pathA, pathB, rootFilePath) {
+  if (pathA === pathB) return true;
+
   const rootDir = path.resolve(process.cwd()); // your project root
   const rootFileDir = path.dirname(path.resolve(process.cwd(), rootFilePath)); // folder of rootFilePath
 
@@ -286,7 +306,7 @@ function insertLinkIntoHead(dom, link, addSpace = false) {
   )
     return;
   // Find the <head> tag
-  const head = DomUtils.findOne((el) => el.name === 'head', dom.children, true);
+  let head = DomUtils.findOne((el) => el.name === 'head', dom.children, true);
 
   // If no <head>, create one and insert it
   if (!head) {
@@ -313,24 +333,15 @@ function insertLinkIntoHead(dom, link, addSpace = false) {
     head.children.pop();
   }
 
+  if(!dom.headTags)
+  dom.headTags = [];
+
+  dom.headTags.push (linkElement);
+  
   head.children.push(linkElement);
   linkElement.parent = head;
 
-  if (addSpace) head.children.push(new Text('\n '));
-}
-
-function getRelativePathFrom(relativePath, from) {
-  if (relativePath.startsWith('/')) {
-    return relativePath.replace('/', '');
-  }
-  const split = relativePath.split(state.config.inputDir);
-  relativePath = state.config.inputDir + split[split.length - 1];
-  return relativePath;
-}
-
-function getRelativePath(file, from = state.config.inputDir) {
-  file = path.relative(process.cwd(), file);
-  return path.relative(from, file);
+  //if (addSpace) head.children.push(new Text('\n '));
 }
 
 function prefixGlobsWithDir(patterns, dir) {
@@ -356,15 +367,16 @@ function prefixGlobsWithDir(patterns, dir) {
   });
 }
 
-function findHtmlDeps(cssFiles, ast = false) {
+function findHtmlDeps(cssFiles, type = 'html') {
   const htmlDeps = new Set();
   //console.log (cssFiles);
   //console.log (Object.keys (metaCache));
   for (const cssFile of cssFiles) {
     if (state.metaCache[cssFile]) {
       for (const htmlFile of state.metaCache[cssFile]) {
-        if (ast && htmlFile.isAST) htmlDeps.add(htmlFile);
-        else if (!ast && htmlFile.isDOM) htmlDeps.add(htmlFile);
+        if (type === 'ast' && htmlFile.isAST) htmlDeps.add(htmlFile);
+        else if (type === 'html' && htmlFile.isDOM) htmlDeps.add(htmlFile);
+        else if (type === 'js' && htmlFile.isJs) htmlDeps.add (htmlFile);
       }
     }
   }
@@ -427,11 +439,12 @@ function copyFiles(inputDir, outputDir) {
   }
 }
 function isRestFile(file) {
-  const baseExtensions = ['.html', '.css', '.jsx', '.tsx'];
+  const baseExtensions = ['.html', '.css', '.jsx', '.tsx', '.js', '.ts'];
 
   return !baseExtensions.includes(path.extname(file).toLowerCase());
 }
 function findDomsInCache(htmlFiles) {
+
   const result = new Set();
   for (const dom of Object.values(state.domCache)) {
     for (const htmlFile of htmlFiles) {
@@ -470,6 +483,279 @@ function getHasClassNameRegex(klass) {
   return new RegExp(`className=["'][^"']*\\b${klass}\\b[^"']*["']`);
 }
 
+
+
+
+function serializeHtml (dom)
+{
+  const {src} = dom;
+
+  const patches = [];
+
+  const metas = selectAll('meta[name^="auto-scope"]', dom);
+
+  for (const node of metas) {
+    if (node.startIndex == null || node.endIndex == null) continue;
+  
+    let start = node.startIndex;
+    let end = node.endIndex + 1;
+  
+    // Get the full line
+    let lineStart = start;
+    while (lineStart > 0 && src[lineStart - 1] !== '\n' && src[lineStart - 1] !== '\r') {
+      lineStart--;
+    }
+  
+    let lineEnd = end;
+    while (lineEnd < src.length && src[lineEnd] !== '\n' && src[lineEnd] !== '\r') {
+      lineEnd++;
+    }
+    if (src[lineEnd] === '\r' && src[lineEnd + 1] === '\n') lineEnd += 2;
+    else if (src[lineEnd] === '\n' || src[lineEnd] === '\r') lineEnd++;
+  
+    const line = src.slice(lineStart, lineEnd);
+  
+    // If the line only contains the meta tag (plus optional whitespace), remove the whole line
+    if (/^\s*<meta[^>]+>\s*$/i.test(line.trim()) || /^\s*<meta[^>]+\/>\s*$/i.test(line.trim())) {
+      start = lineStart;
+      end = lineEnd;
+    }
+  
+    patches.push({ start, end, data: "" });
+  }
+  
+  
+  const headCloseTag = '</head>';
+let insertIndex = src.indexOf(headCloseTag);
+
+if (dom.headTags?.length > 0 && insertIndex !== -1) {
+  // Find the start of the line containing </head>
+  // Search backward from insertIndex to find the line start
+  let lineStart = insertIndex;
+  while (lineStart > 0 && src[lineStart - 1] !== '\n' && src[lineStart - 1] !== '\r') {
+    lineStart--;
+  }
+
+  // Extract the line with </head>
+  const closingTagLine = src.slice(lineStart, insertIndex + headCloseTag.length);
+
+  // Match indentation (spaces or tabs) at line start
+  const closingTagIndentMatch = closingTagLine.match(/^([ \t]*)<\/head>/);
+  const closingTagIndent = closingTagIndentMatch ? closingTagIndentMatch[1] : '';
+
+  // Get indent of last line inside head to indent new tags
+  const beforeHeadClose = src.slice(0, insertIndex);
+  const lines = beforeHeadClose.split(/\r?\n/);
+
+// Find the last non-empty line
+let lastNonEmptyLine = '';
+for (let i = lines.length - 1; i >= 0; i--) {
+  if (lines[i].trim() !== '') {
+    lastNonEmptyLine = lines[i];
+    break;
+  }
+}
+
+const lastLineIndentMatch = lastNonEmptyLine.match(/^([ \t]*)/);
+const insertedTagsIndent = lastLineIndentMatch ? lastLineIndentMatch[1] : '  ';
+
+  
+  const serializedTags = (dom.headTags || [])
+    .map(tag => insertedTagsIndent + serializeNode(tag, { encodeEntities: false }))
+    .join('\n');
+
+    insertIndex -= closingTagIndent.length;
+  const fullInsertion = serializedTags + '\n';
+
+
+  patches.push({
+    start: insertIndex,
+    end: insertIndex,
+    data: fullInsertion,
+  });
+}
+/* ----- 2-C  ·  REWRITE class ATTRIBUTES LOSSLESSLY ----- */
+const classNodes = selectAll("[class]", dom);
+for (const node of classNodes) {
+  if (node.startIndex == null || node.endIndex == null ) continue;
+  const start = node.startIndex;
+  let end = start;
+  
+  // Look for the end of the opening tag
+  while (end < src.length && src[end] !== '>') end++;
+  if (src[end - 1] === '/') end++; // handle self-closing
+  end++; // include '>'
+  
+  // Extract just the opening tag
+  const tagText = src.slice(start, end);
+  
+  // Match and patch only the class attribute
+  const match = tagText.match(/class\s*=\s*(['"])(.*?)\1/i);
+  if (!match) continue;
+  
+  const originalClass = match[2];
+  const newClass = node.attribs.class;
+  
+  const needsClassUpdate = originalClass !== newClass;
+
+  const scopeHash = node.attribs['data-scope-hash'];
+  const scopeMatch = tagText.match(/data-scope-hash\s*=\s*(['"])(.*?)\1/i);
+  const needsScopeHashUpdate = scopeHash && (!scopeMatch || scopeMatch[2] !== scopeHash);
+  const needsScopeHashRemoval = !scopeHash && scopeMatch;
+  
+  const scopeAttrib = node.attribs['data-scope'];
+  const scopeAttribMatch = tagText.match(/data-scope\s*=\s*(['"])(.*?)\1/i);
+  const needsScopeAttribUpdate = scopeAttrib && (!scopeAttribMatch || scopeAttribMatch[2] !== scopeAttrib);
+  const needsScopeAttribRemoval = !scopeAttrib && scopeAttribMatch;
+
+  if(!needsClassUpdate && !needsScopeHashUpdate && !needsScopeAttribUpdate && !needsScopeAttribRemoval && !needsScopeHashRemoval) continue;
+
+  let patchedTag = tagText;
+
+  if (needsClassUpdate)
+  {
+    patchedTag = tagText.replace(
+      match[0],
+      `class=${match[1]}${newClass}${match[1]}`
+    );
+  }
+  
+  if(needsScopeHashUpdate)
+  {
+    if (scopeMatch)
+      patchedTag = patchedTag.replace(
+        scopeMatch[0],
+        `data-scope-hash=${scopeMatch[1]}${scopeHash}${scopeMatch[1]}`
+      );
+      else {
+        // Insert new data-scope-hash before closing `>`
+        patchedTag = patchedTag.replace(/>$/, ` data-scope-hash="${scopeHash}">`);
+      }
+  }   else if (needsScopeHashRemoval)
+    patchedTag = patchedTag.replace(scopeMatch[0], "").replace(/\s{2,}/g, " ").replace(/\s*>$/, ">");
+  
+
+  if (needsScopeAttribUpdate)
+  {
+    if (scopeAttribMatch)
+      patchedTag = patchedTag.replace(
+        scopeAttribMatch[0],
+        `data-scope=${scopeAttribMatch[1]}${scopeAttrib}${scopeAttribMatch[1]}`
+      );
+      else {
+        // Insert new data-scope-hash before closing `>`
+        patchedTag = patchedTag.replace(/>$/, ` data-scope="${scopeAttrib}">`);
+      }
+  }
+  else if (needsScopeAttribRemoval)
+    patchedTag = patchedTag.replace(scopeAttribMatch[0], "").replace(/\s{2,}/g, " ").replace(/\s*>$/, ">");
+  
+  // Push patch for just the opening tag
+  patches.push({
+    start,
+    end,
+    data: patchedTag,
+  });
+}
+
+/* ----- 2-C  ·  REWRITE id ATTRIBUTES LOSSLESSLY ----- */
+const idNodes = selectAll("[id]", dom);
+for (const node of idNodes) {
+  if (node.startIndex == null || node.endIndex == null ) continue;
+  const start = node.startIndex;
+  let end = start;
+  
+  // Look for the end of the opening tag
+  while (end < src.length && src[end] !== '>') end++;
+  if (src[end - 1] === '/') end++; // handle self-closing
+  end++; // include '>'
+  
+  // Extract just the opening tag
+  const tagText = src.slice(start, end);
+  
+  // Match and patch only the class attribute
+  const match = tagText.match(/id\s*=\s*(['"])(.*?)\1/i);
+  if (!match) continue;
+  
+  const originalId = match[2];
+  const newId = node.attribs.id;
+  
+  const needsIdUpdate = originalId !== newId;
+  
+
+  if(!needsIdUpdate) continue;
+
+  let patchedTag = tagText.replace(
+      match[0],
+      `id=${match[1]}${newId}${match[1]}`
+    );
+  
+  
+  // Push patch for just the opening tag
+  patches.push({
+    start,
+    end,
+    data: patchedTag,
+  });
+}
+
+/* ----- 2-C  ·  REWRITE for ATTRIBUTES LOSSLESSLY ----- */
+const forNodes = selectAll("[for]", dom);
+for (const node of forNodes) {
+  if (node.startIndex == null || node.endIndex == null ) continue;
+  const start = node.startIndex;
+  let end = start;
+  
+  // Look for the end of the opening tag
+  while (end < src.length && src[end] !== '>') end++;
+  if (src[end - 1] === '/') end++; // handle self-closing
+  end++; // include '>'
+  
+  // Extract just the opening tag
+  const tagText = src.slice(start, end);
+  
+  // Match and patch only the class attribute
+  const match = tagText.match(/for\s*=\s*(['"])(.*?)\1/i);
+  if (!match) continue;
+  
+  const originalFor = match[2];
+  const newFor = node.attribs.for;
+  
+  const needsForUpdate = originalFor !== newFor;
+
+  if(!needsForUpdate) continue;
+
+  const patchedTag = tagText.replace(
+      match[0],
+      `for=${match[1]}${newFor}${match[1]}`
+    );
+  
+  
+  // Push patch for just the opening tag
+  patches.push({
+    start,
+    end,
+    data: patchedTag,
+  });
+}
+
+
+ /* ----- 2-D  ·  APPLY PATCHES LEFT-TO-RIGHT ----- */
+ patches.sort((a, b) => a.start - b.start);
+
+ let out = "";
+ let pos = 0;
+ for (const p of patches) {
+   out += src.slice(pos, p.start) + p.data;
+   pos = p.end;
+ }
+ out += src.slice(pos);
+
+return out;
+
+
+}
+
 export {
   state,
   setConfig,
@@ -484,15 +770,14 @@ export {
   insertLinkIntoHead,
   getFreeId,
   generateCssModuleHash,
-  getRelativePath,
   prefixGlobsWithDir,
   removeIdFromCache,
   findHtmlDeps,
   copyFiles,
   isRestFile,
-  getRelativePathFrom,
   findDomsInCache,
   resolveHref,
   getHasClassRegex,
   getHasClassNameRegex,
+  serializeHtml
 };

@@ -3,18 +3,27 @@
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
+import loadConfig from './loadConfig.js';
+const config = (state.config = await loadConfig());
+
 import concurrently from 'concurrently';
 
 const run = promisify(exec);
 
 async function main() {
   try {
-    await run('npx build --noJS');
+    await run('npx dev');
 
     await concurrently(
       [
-        { command: 'npx dev --noJS', name: 'auto-scope' },
-        { command: 'npx vite' },
+        { command: 'npx dev --watch', name: 'auto-scope' },
+        {
+          command: `npx vite --root dev-temp --config ${
+            config.teamGit
+              ? `${config.teamGit}/${config.viteConfig || 'vite.config.js'}`
+              : 'vite.config.js'
+          }`,
+        },
       ],
       {
         prefix: 'name',

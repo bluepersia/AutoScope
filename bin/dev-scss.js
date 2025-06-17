@@ -11,12 +11,10 @@ async function main() {
   try {
     await run('npx sass src/scss:src/css -no-source-map');
 
-    await run('npx build --noJS');
-
     await concurrently(
       [
         { command: 'npx sass src/scss:src/css --watch', name: 'scss' },
-        { command: 'npx dev --noJS', name: 'auto-scope' },
+        { command: 'npx dev --watch', name: 'auto-scope' },
       ],
       {
         prefix: 'name',
