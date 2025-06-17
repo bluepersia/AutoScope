@@ -360,7 +360,7 @@ async function main(isRetry = false) {
       {
         type: 'input',
         name: 'commitMsg',
-        message: 'What is the commit message for the merge? (if none is specified, a generic message will be used)'
+        message: 'Post-merge commit message:'
       },
     ]);
 

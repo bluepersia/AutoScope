@@ -414,14 +414,16 @@ function copyFiles(inputDir, outputDir) {
       const destPath = path.join(dest, item.name);
 
       if (item.isDirectory()) {
-        if (containsSupportedFiles(srcPath)) {
-          fs.mkdirSync(destPath, { recursive: true });
-          copyRecursive(srcPath, destPath);
+        if (!item.name.includes ('.git'))
+        {
+          if (containsSupportedFiles(srcPath)) {
+            fs.mkdirSync(destPath, { recursive: true });
+            copyRecursive(srcPath, destPath);
+          }
         }
-      } else if (IsSupported(srcPath)) {
+      } else if (IsSupported(srcPath) && !item.name.includes ('.DS_Store')) {
         fs.mkdirSync(path.dirname(destPath), { recursive: true });
         fs.copyFileSync(srcPath, destPath);
-        console.log(`Copied: ${srcPath} → ${destPath}`);
       }
     }
   }

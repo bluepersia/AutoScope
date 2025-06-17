@@ -79,7 +79,8 @@ if (noJS) config.copyJs = false;
 
 await build(config, runtimeMap, true);
 
-if (!args.includes('--watch')) return;
+if (process.argv[1].endsWith('dev') || args.includes('--watch')) 
+{
 
 config = state.config;
 const watchArr = [];
@@ -207,7 +208,7 @@ if (config.copyFiles) {
   });
 }
 watcher.on('ready', () => {
-  console.log('🚀 Dev mode started.');
+  console.log('🚀 Dev mode started');
 });
 
 // 4. On any file event, filter by your original glob patterns:
@@ -289,3 +290,4 @@ watcher
     }
   })
   .on('error', (err) => console.error('Watcher error:', err));
+}

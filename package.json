@@ -43,6 +43,7 @@
     "@babel/parser": "^7.27.5",
     "@babel/traverse": "^7.27.4",
     "@babel/types": "^7.27.6",
+    "chokidar": "^4.0.3",
     "concurrently": "^9.1.2",
     "css-select": "^5.1.0",
     "dom-serializer": "^2.0.0",

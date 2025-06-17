@@ -727,7 +727,7 @@ function startDevServer() {
     }
   });
 
-  server.listen(3012, () => console.log('Dev API running on port 3001'));
+  server.listen(3012, () => {});
 }
 
 async function onAddedCss(filePaths) {
@@ -878,13 +878,12 @@ async function build(
     findDomsInCache(jsFiles)
   );
 
-  if(state.teamGit)
+  if(state.teamGit && state.config.outputDir === state.config.initOutputDir)
     {
       try 
       {
         const status = await state.teamGit.status();
-        const modifiedFiles = status.modified.length + status.created.length + status.deleted.length + status.renamed.length;
-        console.log (`✏️ ${modifiedFiles} file(s) changed.`);
+        console.log (`📝 ${status.files.length} file(s) changed`);
       }
       catch(err)
       {
