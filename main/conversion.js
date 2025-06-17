@@ -1,6 +1,5 @@
 import {
   state,
-  getRelativePath,
   resolveConfigFor,
   addIdToIdCache,
   getGlobalCssFiles,
@@ -12,8 +11,10 @@ import {
   getNumberSuffix,
   replaceLast,
   removeIdFromCache,
+  serializeHtml
 } from '../shared.js';
 import { writeToAST, replaceLinkStylesheetsWithImports } from './react.js';
+import {writeToAST as writeToASTJs} from './jsParser.js';
 import fs from 'fs';
 import path from 'path';
 import postcss from 'postcss';
@@ -21,9 +22,11 @@ import * as cssSelect from 'css-select';
 import { default as serialize } from 'dom-serializer';
 import { globby } from 'globby';
 import * as DomUtils from 'domutils';
-
-async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
+import cloneDeep from 'lodash/cloneDeep.js'
+async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   const cssConfigs = {};
+
+ 
 
   const {
     runtimeMap,
@@ -41,6 +44,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     );
     return selector;
   }
+
+  
   function replaceCombinators(selector, flatten = []) {
     Object.entries(allCombis).forEach(([combi, flat]) => {
       if (flatten.includes(combi))
@@ -49,6 +54,30 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           .replaceAll(` ${combi}`, flat);
     });
     return selector;
+  }
+/*
+    function replaceCombinators(selector, flatten = []) {
+      Object.entries(allCombis).forEach(([combi, flat]) => {
+        if (flatten.includes(combi)) {
+          // Create regex pattern to match combinators NOT after pseudo-selectors
+          // Negative lookbehind for:
+          // - ')' (pseudo-classes with parentheses like :nth-child(2n))
+          // - pseudo-elements (::before, ::after)
+          // - simple pseudo-classes (:hover, :focus, etc.)
+          const pattern = new RegExp(
+            `(?<!\\)|::[\\w-]+|:[\\w-]+)\\s+${escapeRegExp(combi)}(?=\\s|$)`, 
+            'g'
+          );
+          
+          selector = selector.replace(pattern, flat);
+        }
+      });
+      return selector;
+  }*/
+  
+  // Helper function to escape special regex characters
+  function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
   //const globalCssFiles = config.globalCss ? fg.sync (prefixGlobsWithDir (config.globalCss, inputDir)) : [];
 
@@ -61,22 +90,45 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
   const selectors = {};
   // 3. Rewrite CSS files, replacing all classes with hashed names
 
-  const cssFilesObjs = (
-    await Promise.all(
-      cssFiles.map(async (file) => {
-        const obj = {
-          fileName: path.basename(file, '.css'),
-          file,
-          css: await fs.promises.readFile(file, 'utf-8'),
+  async function sortFilesOldestFirst(files) {
+    
+    const filesWithTimes = await Promise.all(
+      files.map(async (file) => {
+        const stat = await fs.promises.stat(file);
+        return {
+          path: file,
+          time: stat.birthtimeMs || stat.ctimeMs, // Prefer creation time
         };
-        obj.hasHash = obj.css.includes('--scope-hash:');
-
-        return obj;
       })
-    )
-  ).sort((a, b) => {
-    return (b.hasHash === true) - (a.hasHash === true);
-  });
+    );
+
+    filesWithTimes.sort((a, b) => {
+      // Compare by time
+      if (a.time !== b.time) {
+        return a.time - b.time; // Oldest to newest
+      }
+
+      // Fallback: alphabetical path comparison
+      return a.path.localeCompare(b.path);
+    });
+
+    return filesWithTimes.map((file) => file.path);
+  }
+
+  
+  cssFiles = await sortFilesOldestFirst(cssFiles.filter (cssFile => !globalCssFiles.includes (cssFile)));
+  const cssFilesObjs = await Promise.all(
+    cssFiles.map(async (file) => {
+      const obj = {
+        fileName: path.basename(file, '.css'),
+        file,
+        css: await fs.promises.readFile(file, 'utf-8'),
+      };
+      obj.hasHash = obj.css.includes('--scope-hash:');
+
+      return obj;
+    })
+  );
 
   const filesFound = {};
 
@@ -84,8 +136,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     const isGlobal = globalCssFiles.includes(file);
 
     const relativePath = path.relative(inputDir, file);
+   
     let outPath = path.join(outputDir, relativePath);
-
+    
     if (isGlobal) {
       const content = await fs.promises.readFile(file, 'utf-8');
       if (content.includes('.'))
@@ -134,14 +187,24 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
         root.append(rule);
       }
       // remove existing and add new --scope-hash
-      rule.walkDecls('--scope-hash', (d) => d.remove());
+      let already;
+      rule.walkDecls('--scope-hash', (d) => { 
+      already = d
+    
+      });
+
+        if (already)
+        {
+          already.value = hash;
+          return;
+        }
 
       const newDecl = postcss.decl({
         prop: '--scope-hash',
         value: hash,
       });
 
-      if (localConfig.teamRepo) {
+      if (localConfig.teamSrc) {
         newDecl.raws.value = {
           raw: `${hash}; /* Collision-prevention ID */`,
           value: hash, // must match actual value for parsing consistency
@@ -149,16 +212,24 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       }
       // Append it to the rule
       rule.append(newDecl);
+      function getPreviousDecl(decl) {
+        const parent = decl.parent;
+        if (!parent || !Array.isArray(parent.nodes)) return null;
+      
+        const index = parent.nodes.indexOf(decl);
+        return index > 0 ? parent.nodes[index - 1] : null;
+      }
+      newDecl.raws.before = getPreviousDecl (newDecl)?.raws.before || '\n  ';
     }
 
     //if (!scopeHashsMap.hasOwnProperty(fileName))
     //   scopeHashsMap[fileName] = new Set();
 
-    if (localConfig.teamRepo || localConfig.writeRuntimeMap) {
+    if (localConfig.teamSrc || localConfig.writeRuntimeMap) {
       if (hasHash) {
         hash = 'READ';
       } else {
-        hash = generateCssModuleHash(file);
+        hash = generateCssModuleHash(fileName);
 
         let result;
         try {
@@ -177,7 +248,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     } else {
       hash = scopeHashFileMap[file];
 
-      if (!hash) hash = generateCssModuleHash(file);
+      if (!hash) hash = generateCssModuleHash(fileName);
     }
 
     let result;
@@ -185,7 +256,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     let hashDecl;
     let delayedWrite = false;
     let rulesArr = [];
-
+    let selectorsObj;
     result = await postcss([
       async (root) => {
         function findHash() {
@@ -209,8 +280,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           let value;
 
           root.walkRules((rule) => {
+
+
             rule.walkDecls((decl) => {
               if (decl.prop === '--resolve-collision') {
+                decl.raws.before = '';
+                decl.raws.after = '';
                 decl.remove();
                 value = true;
                 return false; // stop walkDecls
@@ -239,20 +314,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           }
 
           if (resolveTag) {
-            const next = hashDecl.next();
-
-            // Check if next node is a comment and on the same line
-            if (
-              next &&
-              next.type === 'comment' &&
-              next.source.start.line === hashDecl.source.end.line
-            ) {
-              next.remove();
-            }
-
-            hashDecl.remove();
-
-            hash = generateCssModuleHash(file, 1);
+            
+            hash = generateCssModuleHash(fileName, 1);
 
             attachHash(root, fileName, hash);
             const out = await state.cssFormatter(root.toString());
@@ -276,10 +339,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
         const dontHash = !hashApply;
 
-        const selectorsObj = {
+        selectorsObj = {
           selectors: [],
           scopeName: fileName,
           hashedName: dontHash ? fileName : `${fileName}-${hashApply}`,
+          hash
         };
 
         if (resolveTag) console.log(`Resolved to ${selectorsObj.hashedName}`);
@@ -290,14 +354,14 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           runtimeMap[hash] = { ...selectorsObj };
         }
 
-        root.walkRules((rule) => {
+        root.walk((rule) => {
+          
           if (
-            rule.parent?.type === 'atrule' &&
-            rule.parent.name === 'keyframes'
+            rule.type === 'atrule' &&
+            rule.name === 'keyframes'
           ) {
-            if (rulesArr.includes(rule.parent)) return;
 
-            const atRule = rule.parent;
+            const atRule = rule;
             const oldName = atRule.params;
 
             const newName = `${selectorsObj.hashedName}__${oldName}`;
@@ -321,12 +385,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             rulesArr.push(atRule);
             return;
           } else if (
-            rule.parent?.type === 'atrule' &&
-            rule.parent.name === 'media'
+            rule.type === 'atrule' &&
+            rule.name === 'media'
           ) {
-            if (!rulesArr.includes(rule.parent))rulesArr.push (rule.parent);
-           
-          }
+            rulesArr.push(rule);
+            return;
+          }else if ((rule.type !== 'rule' || rule.parent?.type === 'atrule') && rule.parent.name !== 'media')
+            return;
 
           function processSelector(rule, selector) {
             if (
@@ -337,50 +402,53 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
               rule.selector.push(selector);
               return;
             }
-
             if (!selector.startsWith(`.${fileName}`))
               selector = `.${fileName} ${selector}`;
 
             function flatten(selector, flattenPseudo = true) {
-              let flat = replaceCombinators(
-                selector,
-                localConfig.flattenCombis
-              );
-
-              let chain = splitSelectorIntoSegments(flat);
-
+              let chain = splitSelectorIntoSegments(selector, localConfig.flattenCombis);
+              
               if (chain.length <= 1)
-                return replaceDoubleUnderscoreInString(
-                  replaceDotsExceptFirst(
-                    flat.replace(`.${fileName}`, `.${selectorsObj.hashedName}`)
-                  )
-                );
-
-              chain = chain.map((seg) => replaceDotsExceptFirst(seg));
-
+              {
+                
+                return replaceDotsExceptFirst(replaceCombinators (replaceDoubleUnderscoreInString(
+                  
+                    selector.replace(`.${fileName}`, `.${selectorsObj.hashedName}`)
+                  
+                ), localConfig.flattenCombis));
+              }
+              //chain = chain.map((seg) => replaceDotsExceptFirst(seg));
+                
               let flatChain = replaceDoubleUnderscoreInArray(
                 chain.map((seg, index) => {
-                  if (!state.allCombisKeys.includes(seg))
                     seg =
                       index === 0
                         ? seg.replace(
                             `.${fileName}`,
                             `.${selectorsObj.hashedName}`
                           )
-                        : `.${selectorsObj.hashedName}__${seg}`;
+                        : prefixSelectorSegment (seg, selectorsObj);
                   return stripSpaces(
-                    index === 0 ? seg : replaceDotsExceptFirst(seg)
-                  );
-                })
-              );
+                    seg)
+                }));
 
-              chain = chain.map((seg) => removeCombinators(seg));
+
+              chain = chain.map((seg) => stripPseudoSelectors (seg.replace (`.${fileName} `, '')));
+              
+              flatChain = flatChain.map (seg => replaceDotsExceptFirst (replaceCombinators (seg, localConfig.flattenCombis), ''))
+
+              const flat = flatChain.join (' ');
+
+              if (chain[0] === `.${fileName}`)
+                {
+                  chain = chain.slice (1);
+                  flatChain = flatChain.slice (1);
+                }
               return {
-                flat: flatChain.join(' '),
+                flat,
                 chain,
-                flatChain: flatChain.map((seg) =>
-                  stripPseudoSelectors(seg.replaceAll('.', ''))
-                ),
+                flatChain: flatChain.map (seg  =>
+                  stripPseudoSelectors (seg.replaceAll('.', '').replace(/([>+~*|])(\s*)/g, '')))
               };
             }
 
@@ -420,12 +488,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           if (!(rule.parent?.type === 'atrule' && rule.parent.name === 'media'))
             rulesArr.push(rule);
         });
-        rulesArr = rulesArr.map (r => r.name === 'media' ? r.clone() : r);
+        
+        
       },
     ]).process(css, { from: undefined });
-
+    rulesArr = rulesArr.map((r) => (r.name === 'media' ? r.clone() : r));
     let fileFound;
-
+    
     if (hashRead) {
       const mapObj = state.teamRepoHashMap[fileName + '/' + hashRead];
 
@@ -440,9 +509,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           filePath: path.join(state.config.outputDir, filePath),
           cssRoot: root,
         };
-
+        console.log (fileFound.filePath);
         filesFound[file] = fileFound.filePath;
-
         let targetClass = null;
         let insertIndex = null;
         let targetRule = null;
@@ -453,7 +521,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
               decl.prop === '--scope-hash' &&
               decl.value.split(' ')[0].trim() === hashRead
             ) {
-              targetClass = rule.selector.split(',')[0].split(' ')[0];
+              targetClass = rule.selector.split(',')[0].split(' ')[0].trim();
               insertIndex = root.index(rule); // ✅ Save the index before removal
               targetRule = rule;
               return false; // Stop searching
@@ -461,11 +529,18 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           }
         });
 
+
+        function isSelectorTargetClass (selector)
+        {
+          if(!selector)
+            return false;
+          return selector === targetClass || selector.startsWith(`${targetClass}_`) || selector.startsWith(`${targetClass}--`) || selector.startsWith(`${targetClass}:`) || selector.startsWith(`${targetClass} `);
+        }
         // Step 2: Collect rules to remove
         const rulesToRemove = [];
         for (let i = insertIndex - 1; i >= 0; i--) {
           const rule = root.nodes[i];
-          if (rule.selector?.startsWith(targetClass)) rulesToRemove.push(rule);
+          if (isSelectorTargetClass(rule.selector)) rulesToRemove.push(rule);
           else break;
         }
 
@@ -474,7 +549,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
         for (let i = insertIndex + 1; i < root.nodes.length; i++) {
           const rule = root.nodes[i];
           if (rule.type === 'rule') {
-            if (rule.selector?.startsWith(targetClass))
+            if (isSelectorTargetClass(rule.selector))
               rulesToRemove.push(rule);
             else break;
           } else if (rule.type === 'atrule') rulesToRemove.push(rule);
@@ -482,22 +557,58 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
         // Step 3: Insert new rules before removing the old ones
         const insertNodes = rulesArr;
-
+        const nodesRaws = insertNodes.map (n => ({raws: {...n.raws}, children:n.nodes ? n.nodes.map(c => ({...c.raws})) : []}));
         // Insert nodes at original index
         if (insertIndex !== null && insertNodes.length > 0) {
           insertNodes.forEach((node, i) => {
             root.insertAfter(insertIndex + i - 1, node);
           });
         } else {
-          insertNodes.forEach((node) => root.append(node));
+          insertNodes.forEach((node) => { root.append(node)});
         }
 
-        if (state.config.useCssFormatterInjecting === false) {
-          insertNodes.forEach((node) => {
-            node.raws.before = '\n\n';
+          insertNodes.forEach((node, index) => {
+            
+            const {raws, children} = nodesRaws[index];
+
+            node.raws = raws;
+            if (node.selector)
+            {
+                const foundNode = rulesToRemove.find (n => n.selector?.toString().replace(/\s+/g, '') === node.selector?.replace(`.${selectorsObj.hashedName}`, targetClass).replace(/\s+/g, ''))
+                if(foundNode)
+                {
+                  node.raws = foundNode.raws;
+                }
+            }
+            else if (node.nodes)
+              {
+                const ruleToRemove = rulesToRemove.find (n => n.params?.replace(/\s+/g, '') === node.params?.replace(/\s+/g, ''));
+  
+                if (ruleToRemove)
+                {
+                  node.raws = ruleToRemove.raws;
+                }
+              
+
+              for (const [index, child] of node.nodes.entries())
+              {
+                child.raws = children[index];
+
+                if(child.selector && ruleToRemove?.nodes)
+                {
+                  const childToRemove = ruleToRemove.nodes.find (c => c.selector?.toString().replace(/\s+/g, '') === child.selector?.replace(`.${selectorsObj.hashedName}`, targetClass).replace(/\s+/g, ''))
+                  
+                  if(childToRemove)
+                    child.raws = childToRemove.raws;
+                }
+              }
+            }
+
           });
-          insertNodes[0].raws.before = '\n\n\n\n';
-        }
+       
+        
+            console.log ('1');
+
         // Step 4: Remove collected rules
         rulesToRemove.forEach((rule) => rule.remove());
 
@@ -508,20 +619,28 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       }
     }
 
-    if (fileFound) outPath = fileFound?.filePath;
+    if (fileFound) outPath = fileFound.filePath;
+    
+    if (fileFound)
+      console.log ( fileFound.filePath);
 
-    if (mergeCss) {
-      mergeCssMap[file] = result.css;
+    const raw = fileFound?.cssRoot.toString() || result.css;
+
+    let out;
+    if (
+      (!fileFound || state.config.useCssFormatterInjecting) &&
+      !mergeCss
+    )
+      out = await state.cssFormatter (raw);
+    else out = raw;
+
+    if (mergeCss && !fileFound) {
+      mergeCssMap[file] = out;
     } else {
+      if (fileFound)
+        delete mergeCssMap[file];
+
       await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-
-      const raw = fileFound?.cssRoot.toString() || result.css;
-
-      let out;
-      if (!fileFound || state.config.useCssFormatterInjecting !== false)
-        out = await state.cssFormatter(raw);
-      else out = raw;
-
       await fs.promises.writeFile(outPath, out);
     }
 
@@ -530,12 +649,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
   let mergedOutpath;
   if (config.mergeCss) {
-    let mergedCss = Object.values(mergeCssMap).join('\n');
+    let mergedCss = Object.values(mergeCssMap).join('\n\n');
 
-    mergedOutpath = path.join(
-      outputDir ? outputDir + '/css' : outputCss,
-      `${path.basename(config.mergeCss, '.css')}.css`
-    );
+    mergedOutpath = path.join(state.config.outputDir, config.mergeCss);
+
     await fs.promises.mkdir(path.dirname(mergedOutpath), { recursive: true });
     mergedCss = await state.cssFormatter(mergedCss);
     await fs.promises.writeFile(mergedOutpath, mergedCss);
@@ -564,7 +681,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       let ignoreScopeData;
       if (node.attribs?.hasOwnProperty('data-break')) {
         ignoreScopeData = node.attribs['data-break']
-          ? node.attribs['data-break'].split(',')
+          ? node.attribs['data-break'].split(' ')
           : '';
         delete node.attribs['data-break'];
         ignoreScope = true;
@@ -574,7 +691,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       let exclude = false;
       if (node.attribs?.hasOwnProperty('data-exclude')) {
         excludeData = node.attribs['data-exclude']
-          ? node.attribs['data-exclude'].split(',')
+          ? node.attribs['data-exclude'].split(' ')
           : '';
         delete node.attribs['data-exclude'];
         exclude = true;
@@ -583,7 +700,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       if (scope.hasOwnProperty('name')) {
         if (inForm) {
           let formProp = node.attribs?.for
-            ? 'htmlFor'
+            ? 'for'
             : node.attribs?.id
             ? 'id'
             : '';
@@ -591,9 +708,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             if (!formProp.includes('__'))
               node.attribs[
                 formProp
-              ] = `${scope.hashedName}__${node.attribs.htmlFor}`;
+              ] = `${scope.hashedName}__${node.attribs[formProp]}`;
             else
-              node.attribs[formProp] = node.attribs.htmlFor.replace(
+              node.attribs[formProp] = node.attribs[formProp].replace(
                 `${scope.name}__`,
                 `${scope.hashedName}__`
               );
@@ -605,9 +722,26 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
           let flatClasses = node.attribs.flatClasses || [];
 
           const contextSymbol = scope.config?.contextSymbol;
-          for (const cls of classes) {
-            if (cls.includes('$')) {
+          for (const [index, cls] of classes.entries ()) {
+            if (cls.includes('$') || cls.includes ('__EXPR')) {
               flatClasses.push(cls);
+            }else if (!scope.config.dontFlatten){
+              let retain = false;
+              if (isScope)
+              {
+                if (cls !== scope.name && !cls.startsWith (`${scope.name}`) && !cls.startsWith (`${scope.name}--`))
+                  retain = true;
+              } else {
+                if (!flatClasses.includes (`${scope.hashedName}__${cls}`))
+                  retain = true;
+              }
+              if (retain)
+              {
+                if (index <= Math.floor((classes.length - 1) / 2))
+                  flatClasses.unshift (cls);
+                else
+                  flatClasses.push (cls);
+              } 
             } else if (
               exclude &&
               (!excludeData ||
@@ -655,12 +789,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                 ...classes
                   .filter((cls) => cls !== scope.name)
                   .map((cls) =>
-                    prevScope.name
+                    cls.startsWith (`${scope.name}--`) ? cls.replace (`${scope.name}--`, `${scope.hashedName}--`) :
+                    (prevScope.name
                       ? cls.replace(
                           `${prevScope.name}__`,
                           `${prevScope.hashedName}__`
                         )
-                      : cls
+                      : cls)
                   )
               );
             }
@@ -693,6 +828,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             ),
           ].join(' ');
 
+          
         if (node.attribs && !node.attribs.class) delete node.attribs.class;
       } else {
         delete node.attribs?.flatClasses;
@@ -716,33 +852,40 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     return relative;
   }
 
+  htmlDoms = htmlDoms.map (dom => cloneDeep (dom));
+
+  if (js)
+  {
+    for(const j of js){ j.domClones = j.doms.map (dom => cloneDeep (dom));
+     
+    }
+    htmlDoms.push(...js.map (j => j.domClones.map (d => d.dom)).flat());
+  }
   if (asts?.length > 0) {
     htmlDoms = [];
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
   htmlDoms.forEach(async (dom, index) => {
-    dom = structuredClone(dom);
-
+    
     const htmlFilePath = dom.filePath;
-    const relativePath = getRelativePath(htmlFilePath);
+    const relativePath = path.relative(state.config.inputDir, htmlFilePath);
     const outPath = path.join(outputDir, relativePath);
     dom.outPath = outPath;
 
-    if (mergedOutpath) insertLinkIntoHead(dom, `/` + mergedOutpath);
+    if (mergedOutpath && !dom.isJs)
+      insertLinkIntoHead(dom, getRelativePathForLink(mergedOutpath, outPath));
 
     const metaTags = state.metaTagMap[dom.filePath];
 
     metaTags.forEach((tag) => {
       let scopeId = tag.scopeId;
 
-      const otherMetaTags = metaTags.filter((t) => t != tag);
-
-      tag.content = tag.content.replace(`${inputDir}/`, `${outputDir}/`);
+      //const otherMetaTags = metaTags.filter((t) => t != tag);
 
       selectorEntries.forEach(([filePath, valueObj]) => {
         if (tag.relativePath === filePath) {
           const foundPath = filesFound[filePath];
-          if (!state.config.mergeCss)
+          if (!state.config.mergeCss && !dom.isJs)
             insertLinkIntoHead(
               dom,
               foundPath
@@ -756,14 +899,16 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
             `.${valueObj.scopeName}`,
             dom.children
           );
+          
           const localConfig = cssConfigs.hasOwnProperty(valueObj.scopeName)
             ? cssConfigs[valueObj.scopeName]
             : config;
 
           for (const scopeNode of scopeNodes) {
             const dataScope = scopeNode.attribs['data-scope'];
-
-            if (dataScope === undefined || dataScope === scopeId) {
+     
+            if (!scopeId || dataScope === scopeId) {
+              
               delete scopeNode.attribs['data-scope'];
 
               scopeNode.attribs.scope = {
@@ -772,45 +917,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                 config: localConfig,
               };
 
-              /*
-                if (localConfig.dontFlatten) {
-                  for (const {raw} of valueObj.selectors) {
-                    for (const otherMetaTag of otherMetaTags) {
-  
-                      if (!raw.includes (`.${otherMetaTag.scopeName}`))
-                        continue;
-  
-                    const matches = cssSelect.selectAll(
-                      stripPseudoSelectors (raw),
-                      scopeNode.children
-                    )
-                    for (const match of matches) {
-                      function processNode(node) {
-                        
-                          const classes = node.attribs?.class?.split(' ') || [];
-                         
-                          const indexOf = classes.indexOf(otherMetaTag.scopeName);
-                          if(indexOf !== -1)
-                          {
-                            node.attribs.keepSub = true;
-                            return;
-                          }
-                        if (node.parent)
-                          processNode(node.parent);
-  
-                      }
-  
-                        processNode(match);
-                    }
-                    }
-                  }
-  
-                }*/
-
               const flatClasses = (scopeNode.attribs.flatClasses =
                 scopeNode.attribs.flatClasses || []);
 
               flatClasses.unshift(`${valueObj.hashedName}`);
+            
+              if (state.config.teamGit)
+                scopeNode.attribs['data-scope-hash'] = valueObj.hash;
 
               if (scopeNode.attribs.keepSub)
                 scopeNode.attribs.flatClasses.push(valueObj.scopeName);
@@ -818,17 +931,17 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
               if (localConfig.dontFlatten) continue;
 
               // 1) build a list of nested scope selectors under this scopeNode
-              const nestedSelectors = otherMetaTags
+              const nestedSelectors = metaTags
                 .map((t) => `.${t.scopeName}`)
                 .join(', ');
               const nestedScopeNodes = nestedSelectors
                 ? cssSelect
-                    .selectAll(nestedSelectors, [scopeNode])
+                    .selectAll(nestedSelectors, scopeNode.children)
                     .filter((subNode) =>
-                      otherMetaTags.findIndex(
+                      metaTags.findIndex(
                         (tag) =>
                           subNode.classList?.contains(tag.scopeName) &&
-                          (subNode.attribs['data-scope'] === undefined ||
+                          (!tag.scopeId ||
                             tag.scopeId === subNode.attribs['data-scope']) !==
                             -1
                       )
@@ -837,7 +950,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
               // helper to test ancestry
               const isDescendantOf = (node, parents) => {
-                while (node.parent) {
+                while (node.parent && node.parent !== scopeNode) {
                   if (parents.includes(node.parent)) return true;
                   node = node.parent;
                 }
@@ -845,34 +958,37 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
               };
 
               for (const { raw, flat } of valueObj.selectors) {
-                const matches = cssSelect
-                  .selectAll(stripPseudoSelectors(raw), [scopeNode])
-                  .filter((node) => !isDescendantOf(node, nestedScopeNodes));
 
-                matches.forEach((match) => {
-                  function processPseudoNode(node, i = flat.chain.length - 1) {
-                    while (state.allCombisKeys.includes(flat.chain[i])) i--;
+                let isObj = typeof flat === 'object';
+                if (typeof flat === 'object')
+                {
+                  
+                  const chain = flat.chain;
+                  const flatChain = flat.flatChain;
+                  selectSeg (0, scopeNode);
+                  function selectSeg (index, node)
+                  {
+                    if (index >= chain.length)
+                      return;
+                    
+                    selectAll (node, `:scope ${chain[index]}`, match => 
+                    {
+                      if(!match.attribs.flatClasses)
+                        match.attribs.flatClasses = [];
 
-                    const segment = flat.chain[i].split(':')[0];
-                    const segmentParts = segment.split('__');
-                    const finalPart = segmentParts[segmentParts.length - 1];
-
-                    const flatSeg = flat.flatChain[i];
-                    if (cssSelect.is(node, finalPart)) {
-                      if (!node.attribs.flatClasses)
-                        node.attribs.flatClasses = [];
-
-                      node.attribs.flatClasses.push(flatSeg);
-
-                      i--;
+                     
+                      if (flatChain[index])
+                      match.attribs.flatClasses.push (flatChain[index]);
+                      selectSeg (index + 1, match)
                     }
-
-                    if (i < 0) return;
-
-                    if (node.parent) processPseudoNode(node.parent, i);
+                    )
                   }
-                  if (typeof flat === 'object') processPseudoNode(match);
-                  else {
+                }
+                else 
+                {
+                  function cb (match)
+                  {
+
                     function removeFirstDot(str) {
                       return str.startsWith('.') ? str.slice(1) : str;
                     }
@@ -887,7 +1003,22 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
                       getAfterDot(removeFirstDot(flat))
                     );
                   }
-                });
+                  selectAll ([scopeNode], stripPseudoSelectors (raw), cb);
+                }
+                function selectAll (nodes, selector, cb)
+                {
+                  const isScopeSel = (!isObj) && ( raw === `.${valueObj.scopeName}` || raw.startsWith(`.${valueObj.scopeName}.`) || raw.startsWith (`.${valueObj.scopeName}--`) || raw.startsWith (`.${valueObj.scopeName}:`));
+                  const matches = cssSelect
+                    .selectAll(selector, nodes)
+                    .filter((node) => 
+                      (!isScopeSel || node === scopeNode) && 
+                    !isDescendantOf(node, nestedScopeNodes));
+  
+                  matches.forEach((match) => {
+                    cb (match);
+                    })
+                }
+                
               }
             }
           }
@@ -897,12 +1028,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
 
     processNodes([dom], '');
 
-    if (!asts || asts.length <= 0) {
+    
+    if (!dom.isJs && (!asts || asts.length <= 0)) {
       await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-      const raw = serialize(dom, { encodeEntities: 'utf8' });
+      const raw = serializeHtml (dom);
       const out = await state.htmlFormatter(raw);
       await fs.promises.writeFile(outPath, out);
-    }
+    } 
     /*
     for (const [index, tagContent] of relativePaths.entries())
     {
@@ -951,15 +1083,26 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
       replaceLinkStylesheetsWithImports(ast);
       const raw = await writeToAST(ast);
       const out = ast.filePath.endsWith('.jsx')
-        ? await state.jsFormatter(raw)
-        : await state.tsFormatter(raw);
-      const relativePath = getRelativePath(ast.filePath);
+        ? await state.jsxFormatter(raw)
+        : await state.tsxFormatter(raw);
+      const relativePath = path.relative(state.config.inputDir, ast.filePath);
       const outPath = path.join(outputDir, relativePath);
-      await fs.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.writeFile(outPath, out, 'utf8');
+      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      await fs.promises.writeFile(outPath, out, 'utf8');
     }
   }
-
+  if (js?.length > 0)
+  {
+    for (const j of js)
+    {
+      const raw = await writeToASTJs (j);
+      const out = j.filePath.endsWith ('.js') ? await state.jsFormatter (raw) : await state.tsFormatter (raw);
+      const relativePath = path.relative(state.config.inputDir, j.filePath);
+      const outPath = path.join(outputDir, relativePath);
+      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      await fs.promises.writeFile(outPath, out, 'utf8');
+    }
+  }
   const runtimeMapKeys = Object.keys(runtimeMap);
 
   if (runtimeMapKeys.length > 0) {
@@ -980,48 +1123,75 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts) {
     await fs.promises.writeFile(outPath, JSON.stringify(runtimeMap, null, 2));
   }
 }
+function prefixSelectorSegment(segment, selectorsObj) {
+  const prefix = `.${selectorsObj.hashedName}__`;
 
-/**
- * Split a selector into segments at pseudos or combinators,
- * preserving those tokens at the end of their segment.
- *
- * @param {string} sel
- * @returns {string[]}
- */
-function splitSelectorIntoSegments(sel) {
-  // 1) Tokenize:
-  //    - ::pseudo or :pseudo(...) or :pseudo
-  //    - combinators > + ~
-  //    - anything else (\S+)
-  const tokenPattern = /::?[^\s>+~]+(?:\([^\)]*\))?|[>+~]|\S+/g;
+  // Match leading combinator with optional whitespace
+  const combinatorMatch = segment.match(/^([>+~|*])(\s*)/);
+
+  if (combinatorMatch) {
+    // Segment starts with combinator
+    const [fullMatch, combinator, space] = combinatorMatch;
+    const rest = segment.slice(fullMatch.length).trimStart();
+    if(rest)
+    return `${combinator}${space}${prefix}${rest}`;
+  else 
+    return combinator;
+  }else {
+    // No combinator, just prefix it
+    return `${prefix}${segment}`;
+  }
+}
+
+
+function splitSelectorIntoSegments(sel, flattenCombis = []) {
+  const tokenPattern = /::?[^\s>+~*|]+(?:\([^\)]*\))?|[>+~*|]|\S+/g;
   const tokens = sel.match(tokenPattern) || [];
 
   const segments = [];
   let curr = '';
 
-  for (const tok of tokens) {
-    if (tok === '>' || tok === '+' || tok === '~') {
-      // combinator: append and flush
-      curr = curr ? `${curr} ${tok}` : tok;
-      segments.push(curr.trim());
-      curr = '';
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+
+    if (['>', '+', '~', '|', '*'].includes(tok)) {
+    
+      if (flattenCombis.includes(tok)) {
+        curr = curr ? `${curr} ${tok}` : tok;
+      } else {  
+        // ✅ First, flush what we’ve collected
+        if (curr) {
+          segments.push(curr.trim());
+          curr = '';
+        }
+
+        // ✅ Then merge combinator with next token
+        const next = tokens[i + 1];
+        if (next) {
+          segments.push(`${tok} ${next}`);
+          i++; // skip next token
+        }
+        else 
+          segments.push (tok);
+      }
     } else if (tok.includes(':')) {
-      // pseudo-selector: append and flush
       curr = curr ? `${curr} ${tok}` : tok;
       segments.push(curr.trim());
       curr = '';
     } else {
-      // plain token: accumulate
       curr = curr ? `${curr} ${tok}` : tok;
     }
   }
 
-  // flush any trailing chunk
   if (curr) segments.push(curr.trim());
   return segments;
 }
 
+
+
+
 function replaceDoubleUnderscoreInString(str) {
+  if (!state.config.strictBEM) return str;
   const parts = str.split('__');
   if (parts.length <= 2) return str;
   return parts.slice(0, 2).join('__') + '-' + parts.slice(2).join('-');
@@ -1031,8 +1201,20 @@ function replaceDoubleUnderscoreInArray(arr) {
   return arr.map(replaceDoubleUnderscoreInString);
 }
 
-function replaceDotsExceptFirst(input) {
-  return stripSpaces(input).replaceAll('_.', '_');
+function replaceDotsExceptFirst(input, replacement = '') {
+  input = stripSpaces(input);
+
+  const firstDotIndex = input.indexOf('.');
+  if (firstDotIndex === -1) return input;
+
+  // Split around the first dot — KEEP IT UNCHANGED
+  const before = input.slice(0, firstDotIndex + 1);
+  const after = input.slice(firstDotIndex + 1);
+
+  // Replace all remaining dots that are NOT preceded by whitespace+combinator
+  const result = after.replace(/(?<![\s>+~|*])\./g, replacement);
+
+  return before + result;
 }
 
 function stripSpaces(selector) {

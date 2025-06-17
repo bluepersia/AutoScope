@@ -7,7 +7,7 @@ function getMachineTagId(length = 4) {
 
   for (const name of Object.keys(interfaces)) {
     for (const net of interfaces[name] || []) {
-      if (!net.internal && net.mac && net.mac !== '00:00:00:00:00:00') {
+      if (!net.internal && net.mac !== '00:00:00:00:00:00') {
         const hash = crypto
           .createHash('sha1')
           .update(net.mac)

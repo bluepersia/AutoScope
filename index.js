@@ -11,8 +11,6 @@ import {
   prefixGlobsWithDir,
   setConfig,
   copyFiles,
-  findHtmlDeps,
-  getRelativePathFrom,
   findDomsInCache,
 } from './shared.js';
 import { writeCssAndHtml } from './main/conversion.js';
@@ -25,6 +23,8 @@ import { createRequire } from 'module';
 let prettier;
 let ESLint;
 let stylelint;
+let biome;
+let beautify;
 
 const require = createRequire(
   pathToFileURL(path.join(process.cwd(), 'index.js')).href
@@ -38,6 +38,13 @@ try {
 try {
   stylelint = require('stylelint');
 } catch {}
+try {
+  biome = require('@biomejs/biome');
+} catch {}
+
+try {
+  beautify = require('js-beautify');
+} catch (err) {}
 
 async function init(newConfig, runtimeMp, devMd = false) {
   if (newConfig === state.config) return state.config;
@@ -46,27 +53,33 @@ async function init(newConfig, runtimeMp, devMd = false) {
 
   state.devMode = devMd;
 
+  initTeamSrc();
+
   state.config.initOutputDir = state.config.outputDir;
   if (devMd) {
-    state.config.outputDir = 'dev-temp';
+    state.config.outputDir =
+      state.config.teamSrc?.length <= 1
+        ? `dev-temp/${state.config.teamSrc[0]}`
+        : 'dev-temp';
   }
 
   if (state.devMode) {
     state.config.devMode = true;
     state.config.mergeCss = false;
     process.on('SIGINT', cleanUp);
-    if (state.config.teamRepo) startDevServer();
+    if (state.config.teamSrc) startDevServer();
   }
 
+  if (!newConfig.copyFiles && state.config.teamGit)
+    state.config.copyFiles = state.config.teamGit;
+  
   if (state.config.copyFiles === true)
-    state.config.copyFiles = state.config.teamRepo || state.config.inputDir;
+    state.config.copyFiles = state.config.teamGit || state.config.inputDir;
 
   //if (state.config.globalCss)
   //state.globalCss = prefixGlobsWithDir (state.config.globalCss, state.inputDir);
 
-  await initInputCss(state.config);
-
-  if (state.config.teamRepo) await initTeamRepoHashMap();
+  if (state.config.teamSrc) await initTeamRepoHashMap();
 
   state.mergeCssMap = {};
 
@@ -91,9 +104,6 @@ async function init(newConfig, runtimeMp, devMd = false) {
       inputCss.push (`!${globalCss}`);
   }*/
 
-  await initInputHtml(state.config);
-  await initInputReact(state.config);
-
   return state.config;
 }
 
@@ -117,86 +127,450 @@ async function startUp ()
 
 }*/
 
+function initTeamSrc() {
+  if (state.config.teamGit && !state.config.teamSrc)
+    state.config.teamSrc = ['src'];
+  else if (state.config.teamSrc && !Array.isArray(state.config.teamSrc))
+    state.config.teamSrc = [state.config.teamSrc];
+}
 function initFormatters() {
-  state.config.prettierConfig = state.config.prettierConfig || {};
-  state.config.ESLintConfig = state.config.ESLintConfig || {};
-  state.config.stylelintConfig = state.config.stylelintConfig || {};
 
-  if (stylelint)
-    state.cssFormatter = async (input) =>
-      await stylelint.lint({
-        code: input,
-        config: state.config.stylelintConfig,
-        fix: true,
-      });
-  else if (prettier)
-    state.cssFormatter = async (input) =>
-      await prettier.format(input, {
-        parser: 'css',
-        ...state.config.prettierConfig,
-      });
-  else state.cssFormatter = async (input) => input;
+  state.config.formatters = state.config.formatters || {};
 
-  if (ESLint) {
-    const eslint = new ESLint({
-      baseConfig: state.config.ESLintConfig,
-      fix: true,
-    });
-    state.jsFormatter = async (input) => await eslint.lintText(input);
-  } else if (prettier) {
-    state.jsFormatter = async (input) =>
-      await prettier.format(input, {
-        parser: 'babel',
-        ...state.config.prettierConfig,
-      });
-    state.tsFormatter = async (input) =>
-      await prettier.format(input, {
-        parser: 'babel-ts',
-        ...state.config.prettierConfig,
-      });
-  } else {
-    state.jsFormatter = async (input) => input;
-    state.tsFormatter = state.jsFormatter;
+  let {
+    css = [],
+    html = [],
+    js = [],
+    jsx = [],
+    ts = [],
+    tsx = [],
+    all =[]
+  } = state.config.formatters;
+
+
+  const defaultStylelintConfig = {
+    extends: [
+      'stylelint-config-standard'      // Sensible rules
+    ],
+    rules: {
+      'indentation': 2,
+      'string-quotes': 'double',
+      'color-hex-case': 'lower',
+      'block-no-empty': true,
+      'no-empty-source': null, // Allow empty files
+      'selector-class-pattern': null,   // Disable BEM naming enforcement (optional)
+      'declaration-empty-line-before': 'never', // Avoid rule conflicts with Prettier
+      'declaration-block-semicolon-newline-after': 'never'
+    },
+    ignoreFiles: ['**/node_modules/**', '**/dist/**']
   }
 
-  state.htmlFormatter = prettier
-    ? async (input) => {
-        console.log('prettier');
-        return await prettier.format(input, {
+  const defaultEslintConfig = [
+    {
+      languageOptions: {
+        ecmaVersion: 2024,
+        sourceType: 'module',
+        globals: {
+          // Browser globals
+          window: 'readonly',
+          document: 'readonly',
+          console: 'readonly',
+          // Node globals  
+          process: 'readonly',
+          __dirname: 'readonly',
+          __filename: 'readonly',
+          Buffer: 'readonly',
+          global: 'readonly'
+        }
+      },
+      rules: {
+        // Error Prevention
+        'no-undef': 'error',
+        'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+        'no-console': 'off', // Allow console in dev tools
+        'no-debugger': 'warn',
+        
+        // Best Practices  
+        'eqeqeq': ['error', 'always'],
+        'curly': ['error', 'multi-line'],
+        'no-eval': 'error',
+        'no-implied-eval': 'error',
+        'no-new-func': 'error',
+        
+        // Style (Light - let Prettier handle most)
+        'semi': ['error', 'always'],
+        'quotes': ['error', 'single', { allowTemplateLiterals: true }],
+        'no-trailing-spaces': 'error',
+        'eol-last': 'error',
+        
+        // Modern JS
+        'prefer-const': 'error',
+        'no-var': 'error',
+        'prefer-arrow-callback': 'warn',
+        'prefer-template': 'warn'
+      }
+    }
+  ]
+
+  if (css.includes ('prettier'))
+    defaultStylelintConfig.extends.push ('stylelint-config-prettier')
+
+
+
+
+  state.config.formatters.prettierConfig =
+    state.config.formatters.prettierConfig || {};
+  state.config.formatters.eslintConfig =
+    state.config.formatters.eslintConfig || defaultEslintConfig;
+  state.config.formatters.stylelintConfig =
+    state.config.formatters.stylelintConfig || defaultStylelintConfig;
+  state.config.formatters.biomeConfig =
+    state.config.formatters.biomeConfig || {};
+  state.config.formatters.beautifyConfig =
+    state.config.formatters.beautifyConfig || {};
+
+  let eslint;
+  if (ESLint) {
+    eslint = new ESLint({
+      baseConfig: state.config.formatters.eslintConfig,
+      overrideConfigFile: true,
+      fix: true,
+    });
+  }
+
+
+
+  if (css && !Array.isArray(css)) css = [css];
+
+  state.cssFormatters = [];
+  state.cssFormatter = async (input) => {
+    for (const formatter of state.cssFormatters) input = await formatter(input);
+
+    return input;
+  };
+
+  if (prettier && (all.includes ('prettier') || css.includes('prettier')))
+    state.cssFormatters.push(
+      async (input) =>
+        await prettier.format(input, {
+          parser: 'css',
+          ...state.config.formatters.prettierConfig,
+        })
+    );
+  if (beautify && (all.includes ('prettier') || css.includes('beautify'))) {
+    let skip;
+    if (state.cssFormatters.length > 0) {
+      console.warn('Prettier + Beautify is not recommended.');
+      if (state.config.formatters.autoResolveConflicts !== false) {
+        skip = true;
+        console.warn('Skipping beautify for css.');
+      }
+    }
+    if (!skip)
+      state.cssFormatters.push(async (input) =>
+        beautify.css(input, state.config.formatters.beautifyConfig)
+      );
+  }
+  if (stylelint && (all.includes('stylelint') || css.includes('stylelint')))
+    state.cssFormatters.push(
+      async (input) =>
+        (await stylelint.lint({
+          code: input,
+          config: state.config.formatters.stylelintConfig,
+          fix: true,
+        })).code
+    );
+
+  if (js && !Array.isArray(js)) js = [js];
+
+  state.jsFormatters = [];
+  state.jsFormatter = async (input) => {
+    for (const formatter of state.jsFormatters) input = await formatter(input);
+
+    return input;
+  };
+
+  if (ts && !Array.isArray(ts)) ts = [ts];
+
+  state.tsFormatters = [];
+  state.tsFormatters = async (input) => {
+    for (const formatter of state.tsFormatters) input = await formatter(input);
+
+    return input;
+  };
+
+  if (jsx && !Array.isArray(jsx)) jsx = [jsx];
+
+  state.jsxFormatters = [];
+  state.jsxFormatter = async (input) => {
+    for (const formatter of state.jsxFormatters) input = await formatter(input);
+
+    return input;
+  };
+
+  if (tsx && !Array.isArray(tsx)) tsx = [tsx];
+
+  state.tsxFormatters = [];
+  state.tsxFormatter = async (input) => {
+    for (const formatter of state.tsxFormatters) input = await formatter(input);
+
+    return input;
+  };
+
+  if (prettier) {
+    if (js.includes('prettier') || all.includes('prettier'))
+      state.jsFormatters.push(
+        async (input) =>
+          await prettier.format(input, {
+            parser: 'babel',
+            ...state.config.formatters.prettierConfig,
+          })
+      );
+    if (jsx.includes('prettier') || all.includes('prettier'))
+      state.jsxFormatters.push(
+        async (input) =>
+          await prettier.format(input, {
+            parser: 'babel',
+            ...state.config.formatters.prettierConfig,
+          })
+      );
+
+    if (ts.includes('prettier') || all.includes ('prettier'))
+      state.tsFormatters.push(
+        async (input) =>
+          await prettier.format(input, {
+            parser: 'babel-ts',
+            ...state.config.formatters.prettierConfig,
+          })
+      );
+    if (tsx.includes('prettier') || all.includes ('prettier'))
+      state.tsxFormatters.push(
+        async (input) =>
+          await prettier.format(input, {
+            parser: 'babel-ts',
+            ...state.config.formatters.prettierConfig,
+          })
+      );
+  }
+
+  if (ESLint) {
+    if (js.includes('eslint') || all.includes ('eslint'))
+      state.jsFormatters.push(async (input) => {
+        const results = await eslint.lintText(input, { filePath: 'dummy.js' });
+        const fixedCode = results[0].output ?? input;
+        return fixedCode;
+      });
+
+    const hasTypeScriptPlugin =
+      state.config.formatters.eslintConfig.plugins?.hasOwnProperty(
+        '@typescript-eslint'
+      );
+
+    if ((ts.includes('eslint') || all.includes('eslint')) && !hasTypeScriptPlugin)
+      console.warn(
+        'Typescript plugin not installed. Skipping eslint typescript.'
+      );
+    else if (ts.includes('eslint') && hasTypeScriptPlugin) {
+      state.tsFormatters.push(async (input) => {
+        const results = await ESLint.lintText(input, { filePath: 'dummy.ts' });
+        const fixedCode = results[0].output ?? input;
+        return fixedCode;
+      });
+    }
+    const hasReactPlugin =
+      state.config.formatters.eslintConfig.plugins?.hasOwnProperty(
+        'eslint-plugin-react'
+      );
+
+    if ((jsx.includes('eslint') || all.includes('eslint')) && !hasReactPlugin)
+      console.warn(
+        'React plugin for eslint not installed. Skipping eslint for React.'
+      );
+    else if (hasReactPlugin && jsx.includes('eslint')) {
+      state.jsxFormatters.push(async (input) => {
+        const results = await eslint.lintText(input, { filePath: 'dummy.jsx' });
+        const fixedCode = results[0].output ?? input;
+        return fixedCode;
+      });
+    }
+    if (tsx.includes('eslint') || all.includes ('eslint')) {
+      if (!hasReactPlugin)
+        console.warn(
+          'React plugin for eslint not installed. Skipping eslint for TSX files'
+        );
+      else if (!hasTypeScriptPlugin)
+        console.warn(
+          'Typescript plugin for eslint not installed. Skipping eslint for TSX files'
+        );
+    } else if (
+      (tsx.includes('eslint') || all.includes ('eslint'))  &&
+      hasReactPlugin &&
+      hasTypeScriptPlugin
+    ) {
+      state.tsxFormatters.push(async (input) => {
+        const results = await ESLint.lintText(input, { filePath: 'dummy.tsx' });
+        const fixedCode = results[0].output ?? input;
+        return fixedCode;
+      });
+    }
+  }
+  if (biome) {
+    if (js.includes('biome') || all.includes ('biome')) {
+      let skip;
+      if (state.jsFormatters.length > 0) {
+        console.warn('ESLint/Prettier + Biome not recommended for JS.');
+        if (state.config.autoResolveConflicts !== false) {
+          skip = true;
+          console.warn('Skipping Biome for JS.');
+        }
+      }
+      if (!skip)
+        state.jsFormatters.push(
+          async (input) =>
+            await biome.format({
+              filePath: 'dummy.js',
+              content: input,
+              config: state.config.formatters.biomeConfig,
+            })
+        );
+    }
+    if (jsx.includes('biome') || all.includes ('biome')) {
+      let skip;
+      if (state.jsxFormatters.length > 0) {
+        console.warn('ESLint/Prettier + Biome not recommended for JSX.');
+        if (state.config.autoResolveConflicts !== false) {
+          skip = true;
+          console.warn('Skipping Biome for JSX.');
+        }
+      }
+      if (!skip)
+        state.jsxFormatters.push(
+          async (input) =>
+            await biome.format({
+              filePath: 'dummy.jsx',
+              content: input,
+              config: state.config.formatters.biomeConfig,
+            })
+        );
+    }
+
+    if (ts.includes('biome') || all.includes ('biome')) {
+      let skip;
+      if (state.tsFormatters.length > 0) {
+        console.warn('ESLint/Prettier + Biome not recommended for TS.');
+        if (state.config.autoResolveConflicts !== false) {
+          skip = true;
+          console.warn('Skipping Biome for TS.');
+        }
+      }
+      if (!skip)
+        state.tsFormatters.push(
+          async (input) =>
+            await biome.format({
+              filePath: 'dummy.ts',
+              content: input,
+              config: state.config.formatters.biomeConfig,
+            })
+        );
+    }
+    if (tsx.includes('biome') || all.includes ('biome')) {
+      let skip;
+      if (state.tsxFormatters.length > 0) {
+        console.warn('ESLint/Prettier + Biome not recommended for TSX.');
+        if (state.config.autoResolveConflicts !== false) {
+          skip = true;
+          console.warn('Skipping Biome for TSX.');
+        }
+      }
+      if (!skip)
+        state.tsxFormatters.push(
+          async (input) =>
+            await biome.format({
+              filePath: 'dummy.tsx',
+              content: input,
+              config: state.config.formatters.biomeConfig,
+            })
+        );
+    }
+  }
+
+  if (html && !Array.isArray(html)) html = [html];
+
+  state.htmlFormatters = [];
+  state.htmlFormatter = async (input) => {
+    for (const formatter of state.htmlFormatters)
+      input = await formatter(input);
+
+    return input;
+  };
+
+  if (prettier && (html.includes('prettier') || all.includes ('prettier'))) {
+    state.htmlFormatters.push(
+      async (input) =>
+        await prettier.format(input, {
           parser: 'html',
           ...state.config.prettierConfig,
-        });
+        })
+    );
+  }
+
+  if (beautify && (html.includes('beautify') || all.includes ('beautify'))) {
+    let skip;
+    if (state.htmlFormatters.length > 0) {
+      console.warn('Prettier + Beautify not recommended.');
+      if (state.config.autoResolveConflicts !== false) {
+        skip = true;
+        console.warn('Skipping Beautify for HTML.');
       }
-    : async (input) => input;
+    }
+    if (!skip)
+      state.htmlFormatters.push(async (input) =>
+        beautify.html(input, state.config.beautifyConfig)
+      );
+  }
+
+  console.log (state.jsFormatters);
 }
 
 async function initTeamRepoHashMap() {
-  const cssFiles = await globby(state.config.teamRepo);
+  const cssFilesBySrc = await Promise.all(
+    state.config.teamSrc.map(
+      async (src) => await globby(`${state.config.teamGit}/${src}`)
+    )
+  );
 
   state.teamRepoHashMap = {};
 
-  for (const cssFile of cssFiles) {
-    const css = await fs.promises.readFile(cssFile, 'utf-8');
+  for (const [index, teamSrcFiles] of cssFilesBySrc.entries()) {
+    for (const cssFile of teamSrcFiles) {
+      const teamSrc = state.config.teamSrc[index];
+      const css = await fs.promises.readFile(cssFile, 'utf-8');
 
-    if (css.includes('--scope-hash:')) {
-      {
-        const { root } = await postcss().process(css, { from: undefined });
+      if (css.includes('--scope-hash:')) {
+        {
+          const { root } = await postcss().process(css, { from: undefined });
 
-        root.walkDecls((decl) => {
-          if (decl.prop === '--scope-hash') {
-            const filePath = path.relative(state.config.teamRepo, cssFile);
+          root.walkDecls((decl) => {
+            if (decl.prop === '--scope-hash') {
+              const filePath = path.relative(
+                cssFilesBySrc.length <= 1
+                  ? `${state.config.teamGit}/${teamSrc}`
+                  : state.config.teamGit,
+                cssFile
+              );
 
-            state.teamRepoHashMap[
-              decl.parent.selector
-                .split(',')[0]
-                .trim()
-                .replaceAll('.', '')
-                .replace(/-\w+$/, '') +
-                '/' +
-                decl.value.split(' ')[0].trim()
-            ] = { cssRoot: root, filePath };
-          }
-        });
+              state.teamRepoHashMap[
+                decl.parent.selector
+                  .split(',')[0]
+                  .trim()
+                  .replaceAll('.', '')
+                  .replace(/-\w+$/, '') +
+                  '/' +
+                  decl.value.split(' ')[0].trim()
+              ] = { cssRoot: root, filePath };
+            }
+          });
+        }
       }
     }
   }
@@ -251,7 +625,18 @@ async function initInputHtml(config) {
 
   state.htmlFiles = await globby(config.inputHtml);
 }
+async function initInputJs(config) {
+  const inputDirJs = [
+    `${config.inputDir}/**/*.js`,
+    `${config.inputDir}/**/*.ts`,
+  ];
+  config.inputJs = inputDirJs;
+  /*config.inputJs
+    ? prefixGlobsWithDir(config.inputJs, state.config.inputDir)
+    : inputDirJs;*/
 
+  state.jsFiles = await globby(config.inputJs);
+}
 async function initInputCss(config) {
   const inputDirCss = `${config.inputDir}/**/*.css`;
   config.inputCss = state.config.inputCss
@@ -271,7 +656,7 @@ function initCombinatorFlattening(config) {
   let flattenCombis = config.flattenCombis;
   if (flattenCombis === true) flattenCombis = Object.keys(state.allCombis);
   else if (flattenCombis === false) flattenCombis = [];
-  else flattenCombis = [];
+  else if (!flattenCombis) flattenCombis = [];
 
   config.flattenCombis = flattenCombis;
 }
@@ -421,10 +806,27 @@ function getMachineTagId(length = 4) {
 
   return 'anon'; // Fallback if no MAC found
 }
-async function build(cfg = config, runtimeMap = null, devMode = false) {
+async function build(
+  cfg = config,
+  runtimeMap = null,
+  devMode = false,
+  overwrite = true
+) {
   await setConfig(await init(cfg, runtimeMap, devMode));
 
-  if (state.config.teamRepo !== state.config.outputDir) {
+  const htmlFiles = await globby(`${state.config.inputDir}/**/*.html`);
+  const jsFiles = await globby([
+    `${state.config.inputDir}/**/*.js`,
+    `${state.config.inputDir}/**/*.ts`,
+  ]);
+  console.log (`${state.config.inputDir}/**/*.js`);
+  const cssFiles = await globby(`${state.config.inputDir}/**/*.css`);
+  const reactFiles = await globby([
+    `${state.config.inputDir}/**/*.jsx`,
+    `${state.config.inputDir}/**/*.tsx`,
+  ]);
+
+  if (overwrite && state.config.teamGit !== state.config.outputDir) {
     if (fs.existsSync(state.config.outputDir))
       await fs.promises.rm(state.config.outputDir, {
         recursive: true,
@@ -436,7 +838,7 @@ async function build(cfg = config, runtimeMap = null, devMode = false) {
 
   if (
     state.config.copyFiles &&
-    (!state.config.teamRepo || state.config.devMode)
+    (!state.config.teamGit || state.config.devMode)
   ) {
     if (Array.isArray(state.config.copyFiles)) {
       state.config.copyFiles = state.config.copyFiles.filter(
@@ -453,15 +855,17 @@ async function build(cfg = config, runtimeMap = null, devMode = false) {
     }
   }
 
-  if (state.config.teamRepo) await readTeamIDs();
+  if (state.config.teamSrc) await readTeamIDs();
 
   //copyGlobalCss();
 
-  await readMetaTags(state.htmlFiles);
+  await readMetaTags([...htmlFiles, ...jsFiles, ...reactFiles]);
+
   await writeCssAndHtml(
-    state.cssFiles,
-    findDomsInCache(state.htmlFiles),
-    findDomsInCache(state.reactFiles)
+    cssFiles,
+    findDomsInCache(htmlFiles),
+    findDomsInCache(reactFiles),
+    findDomsInCache(jsFiles)
   );
 
   console.log('scoped-css-module: build complete');
@@ -560,7 +964,6 @@ function extractScopeCss(ast) {
 export {
   init,
   build,
-  getRelativePathFrom,
   onAddedCss,
   initInputCss,
   initCombinatorFlattening,
@@ -571,4 +974,5 @@ export {
   initTeamRepoHashMap,
   initInputReact,
   initFormatters,
+  initTeamSrc,
 };

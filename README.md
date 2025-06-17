@@ -134,57 +134,97 @@ During compilation, your HTML and CSS will be uniquely scoped automatically, and
 
 #### 🗂️ Organization
 
-Set up your `inputDir` separate from the project repo, e.g. `'mySrc'`. Set `teamRepo` to the project repo, e.g. `'src'`.
-Set `outputDir` to either:
+Set up a repo for your private work, and inside it, add the repo of your team's project.
+Set `teamGit` to the project repo, and `teamSrc` to the folder/s that contains the source files of the project.
 
-1. Another folder, e.g. '`myDist`'
-2. The team repo itself (use at own risk. The micro tests passed, but the build is constantly overwriting files again)
+#### 🔄 Workflow
 
-#### 🧹 Formatters
+##### 🚀 npx begin <branch name>
 
-Ideally, the team should agree on certain code formatter/s to reduce Git conflicts.
-AutoScope currently supports:
+Before you begin your work, call this command. **Important:** this will download the team repo content back to your src on a new branch.
 
-1. Prettier: `prettierConfig`
-2. ESLint: `ESLintConfig`
-3. Stylelint: `stylelintConfig`
+#### 🗂️ Where to Write Your Files
 
-Install the node package of the formatter.
-Each formatter uses the config structure of the respective node package.
+##### 📁 `inputDir`/ — For Your Scoped Work
 
-#### 🔄 Syncing
-
-To keep your work up-to-date with the repo, you need to sync regularly.
-For this, there are several CMD commands.
-
-##### 🧬 npx team-sync
-
-Downloads the team repo back to your local content. Use this command before getting to work, to assure your content is up-to-date.
-**Note:** team-sync re-generates your classnames based on current styles in the team repo. This may override formatting details (e.g. whether .img was originally a class or an element selector), but the final output remains unchanged.
+##### 📁 teamRepo/ — For Team Content & Static Assets
 
 #### 🔃 npx pull
 
-Pulls and merges from the master branch. Requires you to be on a different branch.
-**Important:** npx pull ensures that colliding class names do not get committed and auto-resolves. Manual Git pulls may skip conflict resolution steps unique to AutoScope, leading to incorrect scoping.
-**Always use this instead of manual Git pulls**
+Stay up to date with the master branch by regularly calling this command. Your scoped work will be merged in a temporary folder called `merge`, which is where you have to resolve conflicts, if there are any for your scoped work.
 
-#### 🎯 npx resolve --name <class name>
+#### 🧹 npx end <branch name>
 
-Same as npx pull, but only syncs the specified class and resolves it to a new hash/suffix.
-Use this when a collision has occured in the team repo to reset the suffix.
+When you're done and you've submitted your work and it has been merged successfully to the master branch, call this command to:
+
+1. Clean up temporary branches.
+2. Pull from master.
+3. If your personal repo is not online, just local, the working branch will be merged back into master.
+
+`copyFiles` in config is automatically set to `teamGit`repo if left unset or set to `true`. You need the full content available relatively during development.
+
+### 🧼 Formatters
+
+AutoScope has integrated support for:
+
+1. Prettier
+2. ESLint
+3. stylelint
+4. beautify
+
+Install the package of the formatter/s you would like AutoScope to automatically apply everywhere.
+
+In the config, set up `formatters` like so:
+
+```js
+{
+  formatters: {
+    all: 'prettier';
+  }
+}
+```
+
+or
+
+```js
+{
+  formatters: {
+    html: 'beautify',
+    css: 'prettier'
+  }
+}
+```
+
+or
+
+```js
+{
+  formatters: {
+    css: ['prettier', 'stylelint'];
+  }
+}
+```
+
+For each formatter, set up the config (if needed) in the same `formatters` object:
+
+1. `prettierConfig`
+2. `eslintConfig`
+3. `stylelintConfig`
+4. `beautifyConfig`
 
 ## ⚙️ Config Options
 
-| Option            | Type            | Default  | Description                                           |
-| ----------------- | --------------- | -------- | ----------------------------------------------------- |
-| `inputDir`        | string          | `'src'`  | The directory to compile from                         |
-| `outputDir`       | string          | `'dist'` | The directory to compile to                           |
-| `dontFlatten`     | boolean         | `false`  | Flatten nested classes into BEM-style names           |
-| `useNumbers`      | boolean         | `true`   | Use number suffixes instead of hashes                 |
-| `dontHashFirst`   | boolean         | `true`   | Do not suffix the first occurence                     |
-| `writeRuntimeMap` | string/boolean  | `false`  | Filepath for runtime JSON needed for HTML-in-JS       |
-| `teamRepo`        | string/boolean  | `false`  | Scan a directory for conflicts (for private use)      |
-| `mergeCss`        | string/boolean  | `false`  | Merge all the CSS into one file                       |
-| `copyFiles`       | string/bool/arr | `false`  | Copy directory content to the output dir, as they are |
-| `globalCss`       | glob/globs      | ``       | Files to exclude from scoping (for global styles)     |
-| `flattenCombis`   | array/boolean   | `[]`     | Flatten combinators, e.g. from > to _a_               |
+| Option           | Type            | Default  | Description                                                    |
+| ---------------- | --------------- | -------- | -------------------------------------------------------------- |
+| `inputDir`       | string          | `'src'`  | The directory to compile from                                  |
+| `outputDir`      | string          | `'dist'` | The directory to compile to                                    |
+| `dontFlatten`    | boolean         | `false`  | Flatten nested classes into BEM-style names                    |
+| `useNumbers`     | boolean         | `true`   | Use number suffixes instead of hashes                          |
+| `dontHashFirst`  | boolean         | `true`   | Do not suffix the first occurence                              |
+| `mergeCss`       | string          | `false`  | Merge all the CSS into one file                                |
+| `teamGit`        | string          | `false`  | The git repo folder of the main project                        |
+| `teamSrc`        | string/array    | `false`  | The src directories within the team git repo e.g.`src`         |
+| `copyFiles`      | string/bool/arr | `false`  | Copy directory content to the output dir, as is                |
+| `globalCss`      | glob/globs      | ``       | Files to exclude from scoping (for global styles)              |
+| `flattenCombis`  | array/boolean   | `[]`     | Flatten combinators, e.g. from > to _a_                        |
+| `overrideConfig` | object          | `{}`     | Override configs for certain files. Key = glob, value = object |

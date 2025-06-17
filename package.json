@@ -15,12 +15,17 @@
     "build-sav": "./bin/build-sav.js",
     "install-scope-react": "./bin/install-scope-react.js",
     "pull": "./bin/pullTeamRepo.js",
+    "reset-pull": "./bin/resetPull.js",
     "where": "./bin/where.js",
     "resolve": "./bin/pullTeamRepo.js",
     "fork": "./bin/fork.js",
     "rename": "./bin/rename.js",
     "dev-build": "./bin/dev-build.js",
-    "gethash": "./bin/getMachineHash.js"
+    "gethash": "./bin/getMachineHash.js",
+    "checkout": "./bin/checkout.js",
+    "branch": "./bin/branch.js",
+    "begin": "./bin/begin.js",
+    "end": "./bin/end.js"
   },
   "type": "module",
   "main": "./index.js",
@@ -32,6 +37,10 @@
     "./build": "./index.cjs"
   },
   "devDependencies": {
+    "@babel/generator": "^7.27.5",
+    "@babel/parser": "^7.27.5",
+    "@babel/traverse": "^7.27.4",
+    "@babel/types": "^7.27.6",
     "concurrently": "^9.1.2",
     "css-select": "^5.1.0",
     "dom-serializer": "^2.0.0",
@@ -40,8 +49,10 @@
     "globby": "^14.1.0",
     "htmlparser2": "^10.0.0",
     "inquirer": "^12.6.3",
+    "lodash": "^4.17.21",
     "multimatch": "^7.0.0",
     "postcss": "^8.5.4",
+    "recast": "^0.23.11",
     "simple-git": "^3.28.0"
   }
 }
