@@ -209,7 +209,7 @@ if (config.copyFiles) {
   });
 }
 watcher.on('ready', () => {
-  console.log('👀 Watcher is ready — listening for HTML/CSS changes...');
+  console.log('🚀 Dev mode started.');
 });
 
 // 4. On any file event, filter by your original glob patterns:
