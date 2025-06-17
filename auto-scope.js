@@ -81,7 +81,7 @@ function processElement(el, importedScope, maps) {
     }*/
 
     for (const rootEl of el.querySelectorAll(`.${otherScope.scopeName}`)) {
-      if (!otherScope.scopeId|| rootEl.dataset.scope == otherScope.scopeId) {
+      if ((!otherScope.scopeId && !rootEl.dataset.scope)|| rootEl.dataset.scope == otherScope.scopeId) {
         nestedSubscopeRoots.add(rootEl);
       }
     }
@@ -293,7 +293,7 @@ function processEl(el, hash = '', scopeId = '') {
     );
 
     for (const match of matches) {
-      if (!importedScope.scopeId || match.dataset.scope == importedScope.scopeId)
+      if ((!importedScope.scopeId && !match.dataset.scope) || match.dataset.scope == importedScope.scopeId)
         toMutate.push(...processElement(match, importedScope, maps));
     }
     continue;

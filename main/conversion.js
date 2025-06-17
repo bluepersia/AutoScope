@@ -905,7 +905,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           for (const scopeNode of scopeNodes) {
             const dataScope = scopeNode.attribs['data-scope'];
      
-            if (!scopeId || dataScope === scopeId) {
+            if ((!scopeId && !dataScope) || dataScope === scopeId) {
               
               delete scopeNode.attribs['data-scope'];
 
@@ -939,7 +939,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
                       metaTags.findIndex(
                         (tag) =>
                           subNode.classList?.contains(tag.scopeName) &&
-                          (!tag.scopeId ||
+                          ((!tag.scopeId && !subNode.attribs['data-scope']) ||
                             tag.scopeId === subNode.attribs['data-scope']) !==
                             -1
                       )

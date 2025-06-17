@@ -595,7 +595,7 @@ async function syncTeamRepo(
       else if (allInvalid) node.attribs['data-break'] = '';
       else node.attribs['data-break'] = invalid.join(',');
     }*/
-
+    const baseClassMap = {}
     for (const [
       i,
       { scopeSelector, baseClass, outPath, klass },
@@ -603,6 +603,14 @@ async function syncTeamRepo(
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
       let foundExact = false;
+
+      let baseClassCount;
+      if (!baseClassMap[baseClass])
+        baseClassMap[baseClass] = 0;
+      
+      baseClassMap[baseClass]++;
+
+      baseClassCount = baseClassMap[baseClass];
 
       let nodes = cssSelect.selectAll (elem => {
         if (!elem.attribs || !elem.attribs.class) return false;
@@ -612,6 +620,12 @@ async function syncTeamRepo(
 
       function processNode (node, isParent = true)
       {
+        if (node.attribs?.id && node.attribs.id.startsWith (`${klass}__`))
+            node.attribs.id = node.attribs.id.split ('__').at (-1);
+        
+          if (node.attribs?.for && node.attribs.for.startsWith (`${klass}__`))
+            node.attribs.for = node.attribs.for.split ('__').at (-1);
+
         if (!node.attribs?.class)
         {
           if(node.children)
@@ -648,6 +662,8 @@ async function syncTeamRepo(
             node.attribs['data-exclude'] = notKlassArr.length === classTokens.length ? '' : notKlassArr.join (' ');
           }
         }*/
+        
+
         let updated = false;
         let exactMatch = false;
         const newTokens = classTokens.map((token) => {
@@ -677,7 +693,9 @@ async function syncTeamRepo(
         }
 
         if (exactMatch) {
-          node.attribs['data-scope'] = String(i);
+          if(baseClassCount > 1)
+            node.attribs['data-scope'] = String(baseClassCount);
+
           foundExact = true;
         }
 
@@ -696,7 +714,7 @@ async function syncTeamRepo(
 
       if (foundExact) {
         usedScopes.push({
-          name: `auto-scope-${i}`,
+          name: baseClassCount <= 1 ? 'auto-scope' : `auto-scope-${baseClassCount}`,
           content: outPath,
           localConfig,
         });
