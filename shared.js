@@ -758,7 +758,7 @@ return out;
 }
 
 function isGitError(err) {
-  return err?.git === true || /fatal:|pathspec|repository|git/i.test(err?.message || '');
+  return err?.git === true || /fatal:|pathspec|repository|git|Git|stash|commit/i.test(err?.message || '');
 }
 
 export {

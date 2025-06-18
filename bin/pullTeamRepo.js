@@ -119,9 +119,9 @@ async function pull(devMd = false, isRetry = false) {
 
   await fsExtra.remove('merge');
 
-  if (!devMode && !name) {
+ /* if (!devMode && !name) {
     await build(state.config);
-  }
+  }*/
 
   if (name)
     await readFilesUsing (name);
@@ -356,7 +356,7 @@ async function main(isRetry = false) {
               decl.remove();
             });
           });
-          const out = await state.config.cssFormatter(root.toString());
+          const out = await state.cssFormatter(root.toString());
           await fs.writeFile(cssFile, out, 'utf-8');
         }
       }
