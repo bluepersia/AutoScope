@@ -132,8 +132,6 @@ CSS files adjacent to your JavaScript will automatically be imported unless you 
 Any function named `getScopedHtml` will be scoped.
 
 ```js
-const autoScope = ['./button.css']; //Manual import, if needed
-
 function getScopedHtml() {
   return `<article class="recipe-card"></article>`; //Scoping will be applied
 }
