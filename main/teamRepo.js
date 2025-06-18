@@ -21,6 +21,7 @@ import { parseDocument, DomUtils } from 'htmlparser2';
 import * as cssSelect from 'css-select';
 import { globby } from 'globby';
 import { default as serialize } from 'dom-serializer';
+import cloneDeep from 'lodash/cloneDeep.js'
 import simpleGit from 'simple-git';
 
 const git = simpleGit(process.cwd());
@@ -459,7 +460,7 @@ async function syncTeamRepo(
 
         stripData.jsDeps.push(outPath);
 
-        js.domClones = structuredClone (js.doms);
+        js.domClones = cloneDeep (js.doms);
         for (const dom of js.domClones) await readAndWriteDom(dom.dom);
 
         outputs.push({

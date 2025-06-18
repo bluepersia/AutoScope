@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
+import { isGitError } from '../shared.js';
 let config = await loadConfig();
 
 const myGit = simpleGit(process.cwd());
@@ -49,4 +50,12 @@ async function main() {
         await myGit.branch (['-D', `${name}-snapshot`]);
 }
 
-main();
+try {
+await main();
+}catch(err)
+{
+  if (isGitError (err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}

@@ -3,7 +3,7 @@
 import loadConfig from './loadConfig.js';
 let config = await loadConfig();
 import simpleGit from 'simple-git';
-import {state} from '../shared.js';
+import {state, isGitError} from '../shared.js';
 import {init} from '../index.js';
 import {syncTeamRepo} from "../main/teamRepo.js";
 import { globby } from 'globby';
@@ -57,4 +57,12 @@ async function main() {
  
 }
 
-main();
+try {
+await main();
+}catch(err)
+{
+  if (isGitError(err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}

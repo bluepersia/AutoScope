@@ -757,6 +757,10 @@ return out;
 
 }
 
+function isGitError(err) {
+  return err?.git === true || /fatal:|pathspec|repository|git/i.test(err?.message || '');
+}
+
 export {
   state,
   setConfig,
@@ -780,5 +784,6 @@ export {
   resolveHref,
   getHasClassRegex,
   getHasClassNameRegex,
-  serializeHtml
+  serializeHtml,
+  isGitError
 };

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
+import { isGitError } from '../shared.js';
 const config = await loadConfig();
 const myGit = simpleGit(process.cwd());
 const teamGit = simpleGit(`${process.cwd()}/${config.teamGit}`);
@@ -19,4 +20,12 @@ async function main() {
   await teamGit.add(add);
 }
 
-main();
+try {
+await main();
+}catch(err)
+{
+  if (isGitError (err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isGitError } from '../shared.js';
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
 const config = await loadConfig();
@@ -22,4 +23,12 @@ async function main() {
   await teamGit.reset(resetArr);
 }
 
-main();
+try {
+await main();
+}catch(err)
+{
+  if (isGitError (err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}

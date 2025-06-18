@@ -11,7 +11,7 @@ import {
   checkDevMode,
   build,
 } from '../index.js';
-import { state } from '../shared.js';
+import { isGitError, state } from '../shared.js';
 import { syncTeamRepo } from '../main/teamRepo.js';
 import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
@@ -110,6 +110,7 @@ async function formatMergeFiles() {
   }
 }
 async function pull(devMd = false, isRetry = false) {
+  try {
   devMode = devMd;
 
   if (!(await main(isRetry))) return;
@@ -142,6 +143,14 @@ async function pull(devMd = false, isRetry = false) {
     await myGit.reset(['--hard', currentBranch.my]);
     await myGit.checkout (currentBranch.my);
   }, 1000);
+}
+catch(err)
+{
+  if (isGitError (err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}
 }
 
 async function readFileSafe(filepath) {

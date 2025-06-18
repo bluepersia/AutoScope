@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { isGitError } from '../shared.js';
 import loadConfig from './loadConfig.js';
 const config = await loadConfig();
 import simpleGit from 'simple-git';
@@ -32,4 +33,12 @@ async function main() {
   }
 }
 
-main();
+try {
+await main();
+}catch(err)
+{
+  if (isGitError(err))
+    console.error (err.message);
+  else 
+    console.error (err);
+}
