@@ -1,4 +1,4 @@
-![Tool Logo](./assets/logo.jpg)
+![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
