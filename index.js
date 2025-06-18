@@ -729,13 +729,13 @@ function startDevServer() {
 
   server.listen(3012, () => {});
 }
-
+/*
 async function onAddedCss(filePaths) {
   for (const filePath of filePaths) {
     const scopeName = path.basename(filePath, '.css');
     if (!state.cssScopes.includes(scopeName)) state.cssScopes.push(scopeName);
   }
-}
+}*/
 
 /*
 async function onChangeTeam (filePaths)
@@ -836,7 +836,7 @@ async function build(
     `${state.config.inputDir}/**/*.tsx`,
   ]);
 
-  if (overwrite && state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir) {
+  if (overwrite && (!state.config.teamGit || (state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir))) {
     if (fs.existsSync(state.config.outputDir))
       await fs.promises.rm(state.config.outputDir, {
         recursive: true,
@@ -985,7 +985,6 @@ function extractScopeCss(ast) {
 export {
   init,
   build,
-  onAddedCss,
   initInputCss,
   initCombinatorFlattening,
   checkDevMode,

@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import chokidar from 'chokidar';
 import { exec } from 'child_process';
-import { build, onAddedCss } from '../index.js';
+import { build } from '../index.js';
 import loadConfig from './loadConfig.js';
 import { state } from '../shared.js';
 
@@ -265,7 +265,7 @@ async function waitForFilesExist(
 watcher
   .on('all', async (event, filePath) => {
     if (['add', 'change'].includes(event) && shouldTrigger(filePath)) {
-      if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
+      //if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
 
       changedFiles.add(filePath);
       clearTimeout(timeout);

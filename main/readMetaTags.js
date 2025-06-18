@@ -27,16 +27,31 @@ async function readMetaTags(
     let dom;
     let js;
     if (isReact) {
-      ast = await getAST(src);
+      try {
+        ast = await getAST(src);
+      } catch(err)
+      {
+        console.error(`[Syntax Error] Failed to parse file: ${filePath}`);
+        console.error (err.message)
+        continue;
+      }
       ast.filePath = filePath;
       ast.isAST = true;
       domCache[filePath] = ast;
     } else if (isJs){
-      js = await getASTJs (filePath);
+      try {
+        js = await getASTJs (filePath);
+      }catch(err)
+      {
+        console.error(`[Syntax Error] Failed to parse file: ${filePath}`);
+        console.error (err.message)
+        continue;
+      }
       js.isJs = true;
       domCache[filePath] = js;
     }
     else {
+      try {
       dom = parseDocument(src, {
         withStartIndices: true,
         withEndIndices: true,
@@ -44,6 +59,12 @@ async function readMetaTags(
         lowerCaseTags: false,
         lowerCaseAttributeNames: false
       });
+    }catch(err)
+    {
+      console.error(`[Syntax Error] Failed to parse file: ${filePath}`);
+      console.error (err.message)
+      continue;
+    }
       dom.src = src;
       dom.filePath = filePath;
       dom.isDOM = true;

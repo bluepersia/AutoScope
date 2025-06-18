@@ -24,8 +24,8 @@ async function onChange(filePaths) {
 
   const htmlFiles = multimatch(matchFilePaths, `${state.config.inputDir}/**/*.html`);
   const jsFiles = multimatch (matchFilePaths, [`${state.config.inputDir}/**/*.js`, `${state.config.inputDir}/**/*.ts`]);
-  const reactFiles = multimatch(matchFilePaths, `${state.config.inputDir}/**/*.css`);
-  let cssFiles = multimatch(matchFilePaths, [`${state.config.inputDir}/**/*.jsx`, `${state.config.inputDir}/**/*.tsx`]);
+  const reactFiles =  multimatch(matchFilePaths, [`${state.config.inputDir}/**/*.jsx`, `${state.config.inputDir}/**/*.tsx`]);
+  let cssFiles =multimatch(matchFilePaths, `${state.config.inputDir}/**/*.css`);
   /*
   let cssFilesNoGlobal = cssFiles;
   if (globalCss)
@@ -84,7 +84,7 @@ function unlink(srcPath) {
   if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
 }
 async function onRemove(filePaths) {
-  const { cssScopes, metaCache, domCache, metaTagMap, mergeCssMap, config } =
+  const {  metaCache, domCache, metaTagMap, mergeCssMap, config } =
     state;
 
   const htmlFiles = filePaths.filter((file) => file.endsWith('.html') || file.endsWith ('.js') || file.endsWith ('.ts') || file.endsWith ('.jsx') || file.endsWith ('.tsx'));
@@ -104,12 +104,12 @@ async function onRemove(filePaths) {
     // delete state.runtimeMap[cssFile];
     unlink(cssFile);
 
-    for (let i = 0; i < cssScopes.length; i++) {
+    /*for (let i = 0; i < cssScopes.length; i++) {
       if (cssScopes[i] === path.basename(cssFile, '.css')) {
         cssScopes.splice(i, 1);
         break;
       }
-    }
+    }*/
   });
 
   Object.entries(metaCache).forEach(([key, val]) => {
@@ -123,6 +123,7 @@ async function onRemove(filePaths) {
   });
   const domsAffected = new Set();
   const astsAffected = new Set();
+  const jsAffected = new Set();
   for (const cssFile of cssFiles) {
     removeIdFromCache(cssFile);
 
@@ -132,11 +133,12 @@ async function onRemove(filePaths) {
       for (const dom of metaCache[cssFile]) {
         if (dom.isDOM) domsAffected.add(dom);
         else if (dom.isAST) astsAffected.add(dom);
+        else if (dom.isJs) jsAffected.add (dom);
       }
     }
   }
 
-  writeCssAndHtml([], Array.from(domsAffected), Array.from(astsAffected));
+  writeCssAndHtml([], Array.from(domsAffected), Array.from(astsAffected), Array.from (jsAffected));
 }
 
 function getOutermostDir(filePath) {

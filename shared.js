@@ -16,7 +16,7 @@ let outputDir;
 let scssFolder;
 let inputCss;
 let inputHtml;
-let cssScopes;
+let cssScopes = [];
 let cssFiles;
 let htmlFiles;
 let devMode = false;
@@ -60,6 +60,8 @@ const allCombis = {
   '|': '_e_',
 };
 
+
+
 const state = {
   inputDir,
   outputDir,
@@ -94,6 +96,7 @@ const state = {
   astCache: {},
   hashLength: 3
 };
+
 
 async function setConfig(cfg) {
   state.config = cfg;

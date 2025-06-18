@@ -178,8 +178,15 @@ async function syncTeamRepo(
 
     for (const teamPath of cssFiles) {
       const css = await fs.promises.readFile(teamPath, 'utf-8');
-      const root = postcss.parse(css, { from: teamPath });
-
+      let root;
+      try {
+       root = postcss.parse(css, { from: teamPath });
+      }catch(err)
+      {
+        console.error(`[Syntax Error] Failed to parse file: ${teamPath}`);
+        console.error(err.message);
+        continue;
+      }
       root.walkRules((rule) => {
         rule.walkDecls('--scope-hash', (decl) => {
           const sel = rule.selector.trim();
@@ -414,18 +421,26 @@ async function syncTeamRepo(
         }
         if (!hasClass) continue;
 
+
+        let dom;
+        try {
+          dom = await readAndWriteDom(
+            parseDocument(html, {
+              withStartIndices: true,
+              withEndIndices: true,
+              recognizeSelfClosing: true,
+              lowerCaseTags: false,
+              lowerCaseAttributeNames: false
+            })
+          );
+        }catch(err)
+        {
+          console.error(`[Syntax Error] Failed to parse file: ${htmlPath}`);
+          console.error(err.message);
+          continue;
+        }
+
         stripData.htmlDeps.push(outPath);
-
-        const dom = await readAndWriteDom(
-          parseDocument(html, {
-            withStartIndices: true,
-            withEndIndices: true,
-            recognizeSelfClosing: true,
-            lowerCaseTags: false,
-            lowerCaseAttributeNames: false
-          })
-        );
-
         dom.src = html;
         outputs.push({
           outPath,
@@ -447,8 +462,15 @@ async function syncTeamRepo(
           )
         );
 
-        const js = await getASTJs (jsPath); 
-
+        let js;
+        try {
+          js = await getASTJs (jsPath); 
+        }catch(err)
+        {
+          console.error(`[Syntax Error] Failed to parse file: ${jsPath}`);
+          console.error(err.message);
+          continue;
+        }
         let hasClass = false;
         for (const hash of myHashes) {
           if (js.raw.includes (`data-scope-hash="${hash}"`)) {
@@ -777,9 +799,17 @@ async function syncTeamRepo(
 
         if (!hasClass) return;
 
+        let ast;
+        try {
+          ast = await getAST(file);
+        } catch(err)
+        {
+          console.error(`[Syntax Error] Failed to parse file: ${file}`);
+          console.error(err.message);
+          continue;
+        }
         reactDeps.push(outPath);
 
-        const ast = await getAST(file);
         for (const dom of ast.doms) readAndWriteDom(dom);
 
         replaceLinkStylesheetsWithImports(ast);

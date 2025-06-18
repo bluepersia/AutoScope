@@ -23,6 +23,34 @@ import { default as serialize } from 'dom-serializer';
 import { globby } from 'globby';
 import * as DomUtils from 'domutils';
 import cloneDeep from 'lodash/cloneDeep.js'
+import stylelint from 'stylelint';
+import { fileURLToPath } from 'url';
+
+// Equivalent to __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function lintCss(cssCode, filepath) {
+  const result = await stylelint.lint({
+    code: cssCode,
+    codeFilename: filepath,
+    config: {
+      extends: "stylelint-config-standard",
+      rules: {
+        "block-no-empty": null
+      }
+    },
+    configBasedir: __dirname
+  });
+
+  if (result.errored) {
+    console.error(`❌ CSS Lint Error in ${filepath}`);
+    for (const warning of result.results[0].warnings) {
+      console.error(`→ Line ${warning.line}: ${warning.text}`);
+    }
+    throw new Error("CSS linting failed");
+  }
+}
 
 async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   const cssConfigs = {};
@@ -76,10 +104,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       return selector;
   }*/
   
-  // Helper function to escape special regex characters
-  function escapeRegExp(string) {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
+
   //const globalCssFiles = config.globalCss ? fg.sync (prefixGlobsWithDir (config.globalCss, inputDir)) : [];
 
   const { inputDir, outputDir } = config;
@@ -134,6 +159,14 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   const filesFound = {};
 
   for (let { file, fileName, css, hasHash } of cssFilesObjs) {
+
+    try {
+      await lintCss (css, file);
+    }catch (err)
+    {
+
+      continue;
+    }
     const isGlobal = globalCssFiles.includes(file);
 
     const relativePath = path.relative(inputDir, file);
@@ -141,12 +174,6 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     let outPath = path.join(outputDir, relativePath);
     
     if (isGlobal) {
-      const content = await fs.promises.readFile(file, 'utf-8');
-      if (content.includes('.'))
-        console.warn(
-          'Classes detected in global CSS. Consider scoping these instead.'
-        );
-
       await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
       await fs.promises.copyFile(file, outPath);
       continue;
@@ -258,6 +285,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     let delayedWrite = false;
     let rulesArr = [];
     let selectorsObj;
+    try 
+    {
     result = await postcss([
       async (root) => {
         function findHash() {
@@ -493,6 +522,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         
       },
     ]).process(css, { from: undefined });
+    } catch(err)
+    {
+      console.error (`Failed to process file: ${file}`);
+      console.error (err);
+      continue;
+    }
     rulesArr = rulesArr.map((r) => (r.name === 'media' ? r.clone() : r));
     let fileFound;
     
