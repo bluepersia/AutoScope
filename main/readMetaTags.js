@@ -63,7 +63,7 @@ async function readMetaTags(
       // Use globby to find all matching files
       const cssFiles = await globby(pattern);
 
-      return cssFiles;
+      return cssFiles.filter (file => !file.includes ('.exclude.'));
     }
 
 
@@ -74,6 +74,7 @@ async function readMetaTags(
       else 
       {
         thisMetaTags = js.autoScopeArray || (await getCssFilesInSameDir (filePath)).map (cssFile => ({name: 'auto-scope', content: cssFile}))
+        
       }
       
     }

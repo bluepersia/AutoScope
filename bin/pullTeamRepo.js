@@ -36,7 +36,14 @@ async function tagExists(git, tagName) {
 async function gitAdd (git, dir)
 {
   const files = await globby([ `${dir}/**/*`]);
-  await git.add(files);
+
+  try{
+    await git.add(files);
+  }
+  catch(err)
+  {
+    console.log (err);
+  }
 }
 async function copyTeamToMergeFolder ()
 {
@@ -119,8 +126,11 @@ async function pull(devMd = false, isRetry = false) {
     await readFilesUsing (name);
 
   setTimeout (async () => {
-    await gitAdd (myGit, state.config.outputDir);
+   
+    //await gitAdd (myGit, state.config.outputDir);
+
     await myGit.rm (["-r", 'merge']);
+    
     await gitAdd(myGit, state.config.inputDir);
     await myGit.commit('Commit final build');
 
@@ -128,6 +138,7 @@ async function pull(devMd = false, isRetry = false) {
     await fsExtra.remove ('merge');
     await myGit.rm (["-r", 'merge']);
     await myGit.commit ('Commit snapshot merge delete');
+ 
     await myGit.reset(['--hard', currentBranch.my]);
     await myGit.checkout (currentBranch.my);
   }, 1000);

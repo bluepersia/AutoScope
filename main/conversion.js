@@ -1104,6 +1104,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   const runtimeMapKeys = Object.keys(runtimeMap);
 
   if (runtimeMapKeys.length > 0) {
+    console.warn ('Runtime compiler is deprecated. Support will end soon. Write scoped JS in inputDir instead.')
     /*
       Object.keys(runtimeMap).forEach((key) => {
         const relativePath = getRelativePath(key);

@@ -16,7 +16,7 @@ export async function getAST(srcPath) {
   const ast = recast.parse (code, { parser });
 
   ast.doms = [];
-  ast.autoScopeArray = [];
+  ast.autoScopeArray;
   ast.filePath = srcPath;
   ast.raw = code;
 

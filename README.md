@@ -126,6 +126,19 @@ Import your modules via:
 <meta name="auto-scope" content="./css/recipe-card.css" />
 ```
 
+### 🟨 JavaScript
+
+CSS files adjacent to your JavaScript will automatically be imported unless you include `.exclude.` in the file name.
+Any function named `getScopedHtml` will be scoped.
+
+```js
+const autoScope = ['./button.css']; //Manual import, if needed
+
+function getScopedHtml() {
+  return `<article class="recipe-card"></article>`; //Scoping will be applied
+}
+```
+
 ### 🧱🎨 Compilation
 
 During compilation, your HTML and CSS will be uniquely scoped automatically, and the CSS and HTML converted to the scoped versions.
