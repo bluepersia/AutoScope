@@ -174,7 +174,8 @@ async function syncTeamRepo(
   }
 
   async function readAndWriteCss() {
-    const scopes = [];
+    let scopes = [];
+    const duplicateHashes = new Set();
 
     for (const teamPath of cssFiles) {
       const css = await fs.promises.readFile(teamPath, 'utf-8');
@@ -221,6 +222,10 @@ async function syncTeamRepo(
           }
 
           if (hash && (!fork || fork === hash)) {
+
+            if (scopes.find (s => s.hash === hash))
+              duplicateHashes.add (hash);
+
             scopes.push({
               scopeSelector: sel,
               hash,
@@ -234,21 +239,7 @@ async function syncTeamRepo(
       });
     }
 
-    /*
-    if (deletedContent?.hashDeleted)
-    {
-      for (const {hash} of deletedContent.hashDeleted)
-      {
-        for (const srcPath of srcCssFiles) {
-          const content = await fs.promises.readFile(srcPath, 'utf8');
-          if (content.includes(`--scope-hash: ${hash}`) || content.includes(`--scope-hash:${hash}`)) {
-            deletedFiles.push (srcPath);
-            srcCssFiles = srcCssFiles.filter (s => s !== srcPath);
-            break;
-          }
-        }
-      }
-    }*/
+    
 
     for (const {
       scopeSelector,
@@ -267,6 +258,26 @@ async function syncTeamRepo(
           content.includes(`--scope-hash: ${hash}`) ||
           content.includes(`--scope-hash:${hash}`)
         ) {
+          if (duplicateHashes.has (hash))
+          {
+            let errorMsg = `💥 Hash conflict! Syncing cancelled to prevent fatal overwrites.`;
+
+            const scopesWithHash = scopes.filter (s => s.hash === hash);
+            const classNames = new Set();
+            for (const scope of scopesWithHash)
+            {
+              classNames.add (scope.className);
+            }
+            errorMsg += '\n';
+            
+            if (classNames.size === scopesWithHash.length)
+              errorMsg += '🎯 You may use npx resolve to fix this.'
+            else 
+              errorMsg += `❗Duplicate class names using same hash. Do not use npx resolve. Instead, remove the hash in your src, then generate new one. Replace the hash in team repo with new one.`;
+       
+
+            throw Error (errorMsg);
+          }
           myHashes.add (hash);
           outPath = srcPath.replace(path.basename(srcPath), `${scopeName}.css`);
           break;
