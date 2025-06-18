@@ -230,6 +230,10 @@ For each formatter, set up the config (if needed) in the same `formatters` objec
 3. `stylelintConfig`
 4. `beautifyConfig`
 
+## 📦 Installation
+
+`npx install-auto-scope` will install a default config, and mark `dist` and `dev-temp` folders on .gitignore.
+
 ## ⚙️ Config Options
 
 | Option           | Type            | Default  | Description                                                    |

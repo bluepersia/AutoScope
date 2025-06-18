@@ -27,7 +27,8 @@
     "checkout": "./bin/checkout.js",
     "branch": "./bin/branch.js",
     "begin": "./bin/begin.js",
-    "end": "./bin/end.js"
+    "end": "./bin/end.js",
+    "install-auto-scope": "./bin/install.js"
   },
   "type": "module",
   "main": "./index.js",
@@ -55,6 +56,7 @@
     "lodash": "^4.17.21",
     "multimatch": "^7.0.0",
     "postcss": "^8.5.4",
+    "postcss-safe-parser": "^7.0.1",
     "recast": "^0.23.11",
     "simple-git": "^3.28.0",
     "stylelint": "^16.20.0",

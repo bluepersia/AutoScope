@@ -36,8 +36,33 @@ async function lintCss(cssCode, filepath) {
     codeFilename: filepath,
     config: {
       extends: "stylelint-config-standard",
+      customSyntax: 'postcss-safe-parser',
       rules: {
-        "block-no-empty": null
+        'block-no-empty': null,
+        'color-no-invalid-hex': true,
+        'declaration-block-no-duplicate-properties': true,
+        'declaration-block-no-shorthand-property-overrides': true,
+        'no-duplicate-selectors': true,
+        'selector-pseudo-class-no-unknown': true,
+        'selector-pseudo-element-no-unknown': true,
+        'selector-type-no-unknown': true,
+        'string-no-newline': true,
+        'unit-no-unknown': true,
+        'property-no-unknown': true,
+        'function-name-case': null,
+        'value-keyword-case': null,
+        'no-empty-source': null,
+        'comment-no-empty': null,
+        'block-no-empty': null,
+        "custom-property-empty-line-before": null,
+        "unit-no-unknown": null,
+        "declaration-empty-line-before": null,
+        "length-zero-no-unit": null,
+        "rule-empty-line-before": null,
+        "media-feature-range-notation": null,
+        "selector-class-pattern": null,
+        // optional: avoid crashing on unknown at-rules like Tailwind
+        'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
     },
     configBasedir: __dirname

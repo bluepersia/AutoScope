@@ -1,4 +1,7 @@
+#!/usr/bin/env node
+import fs from 'fs';
 
+const defaultConfig = `
 export default {
   inputDir: 'src', // Write all your vanilla content here
   outputDir: 'dist', // This is where the converted files will be created
@@ -6,9 +9,26 @@ export default {
   useNumbers: true, // Use numbers (1, 2, 3, 4) instead of hash (3d0ccd)
   dontHashFirst: true, // The first scope of a certain type doesn't get an ID or hash
   mergeCss: false, // Merge all the CSS into one file
-  writeRuntimeMap: false, // Write the map needed for runtime scoping
+  teamGit: 'team-repo', //The git repo of the team/main project
   teamSrc: false, // Team src folder/s to scan for class names already used
-  teamGit: 'team-repo',
+  copyFiles: true, // Copy rest of files directly to output, as they are
+  globalCss: '', //Css that should not be scoped and only copied as is 
   flattenCombis: [], //Flatten combinators, e.g. > becomes _a_
-  overrideConfig: {},
+  overrideConfig: {}, //Override config for specific scopes
 };
+  `;
+
+  
+let gitIgnore = '';
+
+if (fs.existsSync ('.gitignore'))
+    gitIgnore = fs.readFileSync ('.gitignore') + '\n';
+
+
+gitIgnore += `/dist
+/dev-temp`
+
+fs.writeFileSync ('.gitignore', gitIgnore);
+
+fs.writeFileSync ('auto-scope.config.js', defaultConfig);
+  
