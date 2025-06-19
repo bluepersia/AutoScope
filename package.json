@@ -28,6 +28,8 @@
     "branch": "./bin/branch.js",
     "begin": "./bin/begin.js",
     "end": "./bin/end.js",
+    "commit": "./bin/commit.js",
+    "post-hash-res": "./bin/post-hash-regen.js",
     "install-auto-scope": "./bin/install.js"
   },
   "type": "module",
@@ -50,6 +52,7 @@
     "dom-serializer": "^2.0.0",
     "domutils": "^3.2.2",
     "fs-extra": "^11.3.0",
+    "git-filter-repo": "^0.0.30",
     "globby": "^14.1.0",
     "htmlparser2": "^10.0.0",
     "inquirer": "^12.6.3",

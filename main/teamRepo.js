@@ -226,6 +226,9 @@ async function syncTeamRepo(
             if (scopes.find (s => s.hash === hash))
               duplicateHashes.add (hash);
 
+
+            const scopeClass = sel.slice(1);
+            const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
             scopes.push({
               scopeSelector: sel,
               hash,
@@ -233,6 +236,8 @@ async function syncTeamRepo(
               scopeName,
               className,
               adjacentRules,
+              scopeClass,
+              baseClass
             });
           }
         });
@@ -248,35 +253,29 @@ async function syncTeamRepo(
       scopeName,
       className,
       adjacentRules,
+      scopeClass,
+      baseClass
     } of scopes) {
       let outPath = null;
+
 
       for (const srcPath of srcCssFiles) {
         const content = await fs.promises.readFile(srcPath, 'utf8');
 
         if (
-          content.includes(`--scope-hash: ${hash}`) ||
-          content.includes(`--scope-hash:${hash}`)
+          (content.includes(`--scope-hash: ${hash}`) ||
+          content.includes(`--scope-hash:${hash}`)) && baseClass === path.basename (srcPath, '.css')
         ) {
           if (duplicateHashes.has (hash))
           {
-            let errorMsg = `💥 Hash conflict! Syncing cancelled to prevent fatal overwrites.`;
-
-            const scopesWithHash = scopes.filter (s => s.hash === hash);
-            const classNames = new Set();
-            for (const scope of scopesWithHash)
+            const baseClassCount = scopes.reduce ((prev, curr) => curr.baseClass === baseClass && curr.hash === hash ? prev + 1 : prev, 0);
+           
+            if (baseClassCount > 1)
             {
-              classNames.add (scope.className);
+              const err = new Error(`💥 Hash conflict (${srcPath})! Syncing cancelled to prevent fatal overwrites. Regenerate the hash and insert it into the team repo on the master branch.`);
+              err.stack = ''; 
+              throw err;
             }
-            errorMsg += '\n';
-            
-            if (classNames.size === scopesWithHash.length)
-              errorMsg += '🎯 You may use npx resolve to fix this.'
-            else 
-              errorMsg += `❗Duplicate class names using same hash. Do not use npx resolve. Instead, remove the hash in your src, then generate new one. Replace the hash in team repo with new one.`;
-       
-
-            throw Error (errorMsg);
           }
           myHashes.add (hash);
           outPath = srcPath.replace(path.basename(srcPath), `${scopeName}.css`);
@@ -299,8 +298,7 @@ async function syncTeamRepo(
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
       let extracted = [];
-      const scopeClass = scopeSelector.slice(1);
-      const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
+      
       let scopeRegex;
 
       if (localConfig.dontFlatten) {

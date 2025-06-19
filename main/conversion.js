@@ -25,6 +25,7 @@ import * as DomUtils from 'domutils';
 import cloneDeep from 'lodash/cloneDeep.js'
 import stylelint from 'stylelint';
 import { fileURLToPath } from 'url';
+import { decl } from 'postcss';
 
 // Equivalent to __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -61,6 +62,7 @@ async function lintCss(cssCode, filepath) {
         "rule-empty-line-before": null,
         "media-feature-range-notation": null,
         "selector-class-pattern": null,
+        "comment-empty-line-before": null,
         // optional: avoid crashing on unknown at-rules like Tailwind
         'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
@@ -75,6 +77,12 @@ async function lintCss(cssCode, filepath) {
     }
     throw new Error("CSS linting failed");
   }
+}
+
+
+function removeDummyComment (str)
+{
+  return str.replaceAll ('/* DUMMY */', '');
 }
 
 async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
@@ -257,6 +265,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         value: hash,
       });
 
+      newDecl.raws.semicolon = true;
+      const dummy = postcss.comment({ text: 'DUMMY' });
+      dummy.raws.before = '\n';
+      rule.prepend(dummy);
+
       if (localConfig.teamSrc) {
         newDecl.raws.value = {
           raw: `${hash}; /* Collision-prevention ID */`,
@@ -264,7 +277,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         };
       }
       // Append it to the rule
-      rule.append(newDecl);
+      rule.prepend(newDecl);
       function getPreviousDecl(decl) {
         const parent = decl.parent;
         if (!parent || !Array.isArray(parent.nodes)) return null;
@@ -272,7 +285,16 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         const index = parent.nodes.indexOf(decl);
         return index > 0 ? parent.nodes[index - 1] : null;
       }
-      newDecl.raws.before = getPreviousDecl (newDecl)?.raws.before || '\n  ';
+      
+      newDecl.raws.before = '\n  ';
+      const next = dummy.next();
+
+      if (next && typeof next.raws.before === 'string') {
+        const match = next.raws.before.match(/(\n*)([ \t]*)$/);
+
+        const indent = match ? match[2] : '';
+        next.raws.before = '\n' + indent;
+      }
     }
 
     //if (!scopeHashsMap.hasOwnProperty(fileName))
@@ -295,7 +317,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           console.log('Attaching hash to file error');
         }
         css = result.css;
-        const out = await state.cssFormatter(result.css);
+        const out = removeDummyComment (await state.cssFormatter(result.css));
         await fs.promises.writeFile(file, out);
       }
     } else {
@@ -373,7 +395,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             hash = generateCssModuleHash(fileName, 1);
 
             attachHash(root, fileName, hash);
-            const out = await state.cssFormatter(root.toString());
+            const out = removeDummyComment (await state.cssFormatter(root.toString()));
             if (state.config.devMode) delayedWrite = out;
             else await fs.promises.writeFile(file, out, 'utf-8');
           }
@@ -692,6 +714,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       out = await state.cssFormatter (raw);
     else out = raw;
 
+    out = removeDummyComment (out);
+
     if (mergeCss && !fileFound) {
       mergeCssMap[file] = out;
     } else {
@@ -712,7 +736,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     mergedOutpath = path.join(state.config.outputDir, config.mergeCss);
 
     await fs.promises.mkdir(path.dirname(mergedOutpath), { recursive: true });
-    mergedCss = await state.cssFormatter(mergedCss);
+    mergedCss = removeDummyComment (await state.cssFormatter(mergedCss));
     await fs.promises.writeFile(mergedOutpath, mergedCss);
   }
 

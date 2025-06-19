@@ -154,17 +154,17 @@ Set `teamGit` to the project repo, and `teamSrc` to the folder/s that contains t
 
 Before you begin your work, call this command. **Important:** this will download the team repo content back to your src on a new branch.
 
-#### 🗂️ Where to Write Your Files
+##### 🗂️ Where to Write Your Files
 
-##### 📁 `inputDir`/ — For Your Scoped Work
+###### 📁 `inputDir`/ — For Your Scoped Work
 
-##### 📁 teamRepo/ — For Team Content & Static Assets
+###### 📁 teamRepo/ — For Team Content & Static Assets
 
-#### 🔃 npx pull
+##### 🔃 npx pull
 
 Stay up to date with the master branch by regularly calling this command. Your scoped work will be merged in a temporary folder called `merge`, which is where you have to resolve conflicts, if there are any for your scoped work.
 
-#### 🧹 npx end `<branch name>`
+##### 🧹 npx end `<branch name>`
 
 When you're done and you've submitted your work and it has been merged successfully to the master branch, call this command to:
 
@@ -172,10 +172,14 @@ When you're done and you've submitted your work and it has been merged successfu
 2. Pull from master.
 3. If your personal repo is not online, just local, the working branch will be merged back into master.
 
-#### 🎯 npx resolve --name `<class name>`
+##### 🎯 npx resolve --name `<class name>`
 
 Regenerate scope hash and class name based on current team repo state.
 Use this to resolve collisions that happen because other people added same class name as you to the repo.
+
+#### 💡 Tip
+
+Your scoped content will automatically receive a scope hash variable generated. In the CSS, always keep a blank line between the hash and other properties. Hash changes later will be easier.
 
 #### 📝 File copying
 

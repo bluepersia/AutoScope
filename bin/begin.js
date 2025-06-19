@@ -44,7 +44,17 @@ async function main() {
     await teamGit.checkout ('master');
     await teamGit.pull ('origin', 'master');
     await myGit.checkoutLocalBranch(name);
-    await syncTeamRepo(config);
+    try {
+      await syncTeamRepo(config);
+    }catch(err)
+    {
+      console.error (err);
+
+      myGit.checkout ('master');
+      teamGit.checkout ('master');
+      myGit.deleteLocalBranch (name);
+      return;
+    }
     await gitAdd (myGit, state.config.inputDir)
     await myGit.commit ('Team sync');
     

@@ -136,9 +136,6 @@ async function pull(devMd = false, isRetry = false) {
     await myGit.commit('Commit final build');
 
     await myGit.checkout (`${currentBranch.my}-snapshot`);
-    await fsExtra.remove ('merge');
-    await myGit.rm (["-r", 'merge']);
-    await myGit.commit ('Commit snapshot merge delete');
  
     await myGit.reset(['--hard', currentBranch.my]);
     await myGit.checkout (currentBranch.my);
@@ -150,8 +147,25 @@ catch(err)
     console.error (err.message);
   else 
     console.error (err);
+
+
+  await myGit.checkout (currentBranch.my);
+  await fsExtra.remove('merge');
+  try{
+    await myGit.rm (["-r", 'merge']);
+  }catch(err) {}
+  await myGit.commit('Removed merge folder');
+  await myGit.checkout (`${currentBranch.my}-snapshot`);
+  await fsExtra.remove ('merge');
+  try{
+    await myGit.rm (["-r", 'merge']);
+  }catch(err) {}
+  await myGit.commit ('Commit snapshot merge delete');
+  await myGit.checkout (currentBranch.my);
 }
 }
+
+
 
 async function readFileSafe(filepath) {
   try {
@@ -275,11 +289,25 @@ async function main(isRetry = false) {
   try {
     await teamGit.pull('origin', 'master');
   } catch (err) {
+    err.stack = '';
     console.error('Git pull failed:', err);
-   // await fsExtra.remove('merge');
-    //await myGit.deleteLocalBranch('merge');
+    const { confirmMerge } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmMerge',
+        message:
+          'Is the merge completed?',
+        default: false,
+      },
+    ]);
+
+    if (!confirmMerge) {
     return false;
   }
+
+  teamGit.add ('.');
+  teamGit.commit ('Pull merge completed.');
+}
 
   async function readFilesAfter() {
     const allFilesAfter = await Promise.all(
@@ -505,7 +533,23 @@ async function main(isRetry = false) {
   }
   await myGit.commit ('Commit any deleted content');
   await myGit.checkout (currentBranch.my);
-  await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
+  try {
+    await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
+  }catch(e)
+  {
+    if (e.message.includes('CONFLICTS')) {
+      // Get status to find conflicted files
+      const status = await myGit.status();
+      for (const file of status.conflicted) {
+        // Checkout 'theirs' version for conflicted file
+        await myGit.raw(['checkout', '--theirs', file]);
+        await myGit.add(file);
+      }
+      await myGit.commit('Auto-resolve merge conflicts by taking theirs');
+    } else {
+      throw e; // rethrow other errors
+    }
+  }
   state.config.outputDir = 'merge';
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
