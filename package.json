@@ -29,7 +29,7 @@
     "begin": "./bin/begin.js",
     "end": "./bin/end.js",
     "commit": "./bin/commit.js",
-    "post-hash-res": "./bin/post-hash-regen.js",
+    "integrate": "./bin/integrate.js",
     "install-auto-scope": "./bin/install.js"
   },
   "type": "module",

@@ -568,16 +568,18 @@ async function initTeamRepoHashMap() {
                   : state.config.teamGit,
                 cssFile
               );
-
-              state.teamRepoHashMap[
-                decl.parent.selector
-                  .split(',')[0]
-                  .trim()
-                  .replaceAll('.', '')
-                  .replace(/-\w+$/, '') +
-                  '/' +
-                  decl.value.split(' ')[0].trim()
-              ] = { cssRoot: root, filePath };
+              const key = decl.parent.selector
+              .split(',')[0]
+              .trim()
+              .replaceAll('.', '')
+              .replace(/-\w+$/, '') +
+              '/' +
+              decl.value.split(' ')[0].trim()
+          
+              if (state.teamRepoHashMap[key])
+                state.teamRepoHashMap[key] = 'duplicate';
+              else 
+              state.teamRepoHashMap[key] = { cssRoot: root, filePath };
             }
           });
         }

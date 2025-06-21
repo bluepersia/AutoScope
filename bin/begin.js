@@ -51,7 +51,6 @@ async function main() {
       console.error (err);
 
       myGit.checkout ('master');
-      teamGit.checkout ('master');
       myGit.deleteLocalBranch (name);
       return;
     }

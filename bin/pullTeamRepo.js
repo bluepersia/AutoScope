@@ -11,8 +11,8 @@ import {
   checkDevMode,
   build,
 } from '../index.js';
-import { isGitError, state } from '../shared.js';
-import { syncTeamRepo } from '../main/teamRepo.js';
+import { isGitError, state, renameFile } from '../shared.js';
+import { readTeamIDs, syncTeamRepo } from '../main/teamRepo.js';
 import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
 import { globby } from 'globby';
@@ -145,8 +145,10 @@ catch(err)
 {
   if (isGitError (err))
     console.error (err.message);
-  else 
+  else if (err.message !== 'Cancelled.')
     console.error (err);
+  else 
+    console.log (err.message);
 
 
   await myGit.checkout (currentBranch.my);
@@ -195,7 +197,14 @@ function parseCssScopeHashes(cssContent) {
 
     for (const m of classMatches) {
       const className = m[0].slice(1);
-      results.push({ className, hash });
+      const scopeName = className.replace(/-\w+$/, '');
+      const duplicate = results.find (h => h.hash === hash && h.scopeName === scopeName);
+
+      let isDuplicate;
+      if (duplicate)
+        isDuplicate = duplicate.isDuplicate = true;
+      
+      results.push({ className, hash, scopeName, isDuplicate });
     }
   }
 
@@ -243,6 +252,7 @@ async function main(isRetry = false) {
   for (const cssFile of cssFiles) {
     const content = await readFileSafe(path.join(cwd, cssFile));
     const hashes = parseCssScopeHashes(content);
+    for(const h of hashes) h.filePath = cssFile;
     scopeHashes.push(...hashes);
   }
 
@@ -302,7 +312,7 @@ async function main(isRetry = false) {
     ]);
 
     if (!confirmMerge) {
-    return false;
+    throw Error ('Cancelled.');
   }
 
   teamGit.add ('.');
@@ -329,10 +339,11 @@ async function main(isRetry = false) {
     for (const cssFile of cssFilesAfter) {
       const content = await readFileSafe(path.join(cwd, cssFile));
       const hashes = parseCssScopeHashes(content);
+      for(const h of hashes) h.filePath = cssFile;
       scopeHashesAfter.push(...hashes);
     }
 
-    const afterHashArr = scopeHashesAfter.map((h) => h.hash);
+    const afterHashArr = scopeHashesAfter;
 
     return { afterHashArr, allFilesAfter };
   }
@@ -340,9 +351,21 @@ async function main(isRetry = false) {
   let after = await readFilesAfter();
 
   const hashesAdded = after.afterHashArr.filter(
-    (h) => !scopeHashes.find((obj) => obj.hash === h)
+    (h) => !scopeHashes.find((obj) => obj.hash === h.hash && obj.scopeName === h.scopeName)
   );
+  const newNames = scopeHashes.filter (h => {
+    const sameHashes = after.afterHashArr.filter (obj => obj.hash === h.hash);
+    
+    return sameHashes.length <= 0 ? false : sameHashes.every (obj => obj.scopeName !== h.scopeName);
+  });
+  const hashesMoved = after.afterHashArr.filter(h => scopeHashes.find(obj => {
+    const found = h.hash === obj.hash && h.scopeName === obj.scopeName && obj.filePath !== h.filepath
+    if (found)
+      h.prevFilePath = objectMethod.filePath;
 
+    return found;
+  }));
+  const duplicates = after.afterHashArr.filter (h => h.isDuplicate);
   //await gitAdd (myGit, 'merge');
 
   //await myGit.commit('Save master before returning');
@@ -350,52 +373,118 @@ async function main(isRetry = false) {
   //await myGit.checkout(currentBranch.my);
   await teamGit.checkout(currentBranch.team);
 
+  
   let myCssFiles;
 
-  let collisionOccured = false;
-  if (hashesAdded.length > 0) {
+  const collisionsOccured = [];
+
+
+  if (hashesAdded.length > 0 || hashMoved.length > 0 || newNames.length > 0 || duplicates.length > 0) {
     myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     for (const cssFile of myCssFiles) {
       const css = await fs.readFile(cssFile, 'utf-8');
+      const baseClass = path.basename (cssFile, '.css');
 
+
+      for(const newName of newNames)
+        {
+          if (
+            (css.includes(`--scope-hash:${newName.hash}`) ||
+            css.includes(`--scope-hash: ${newName.hash}`)) && newName.scopeName === baseClass
+          )
+            {
+              const { confirmRename } = await inquirer.prompt([
+                {
+                  type: 'input',
+                  name: 'confirmRename',
+                  message:
+                    `🧩 Name ${newName.scopeName} not found for hash ${newName.hash}. Has it been renamed or removed? Type 'rename <name>' to rename this file. Leave blank to proceed. Type 'q' to abort. `,
+                 
+                },
+              ]);
+        
+              if (confirmRename === 'q') {
+                throw Error ('Cancelled.')
+              } else if(confirmRename.startsWith ('rename '))
+              {
+                const name = confirmRename.split (' ')[1];
+                if(name)
+                  await renameFile (cssFile, css, name);
+              }
+            }
+        }
+  
+
+      for(const duplicate of duplicates)
+      {
+        if (
+          (css.includes(`--scope-hash:${duplicate.hash}`) ||
+          css.includes(`--scope-hash: ${duplicate.hash}`)) && baseClass === duplicate.scopeName
+        )
+          {
+            const err = new Error(`💥 Hash conflict (${cssFile})! Syncing cancelled to prevent fatal overwrites. Regenerate the hash and integrate.`);
+              err.stack = ''; 
+              throw err;
+          }
+      }
+
+      for (const hashMoved of hashesMoved)
+      {
+        if (
+          (css.includes(`--scope-hash:${hashMoved.hash}`) ||
+          css.includes(`--scope-hash: ${hashMoved.hash}`)) && hashMoved.scopeName === baseClass)
+          {
+            const { confirmMoved} = await inquirer.prompt([
+              {
+                type: 'confirm',
+                name: 'confirmMoved',
+                message:
+                  `🛰️ The class ${hashMoved.className} with hash ${hashMoved.hash} is now in ${hashMoved.filePath}, but was previously in ${hashMoved.prevFilePath}. Is this still your content?`,
+                default: false,
+              },
+            ]);
+      
+            if (!confirmMoved) {
+              throw Error ('Cancelled. Backup your content and retry.')
+            }
+          }
+      }
+
+      
       for (const hashAdded of hashesAdded) {
         if (
-          css.includes(`--scope-hash:${hashAdded}`) ||
-          css.includes(`--scope-hash: ${hashAdded}`)
+          (css.includes(`--scope-hash:${hashAdded.hash}`) ||
+          css.includes(`--scope-hash: ${hashAdded.hash}`)) && hashAdded.scopeName === path.basename (cssFile, '.css')
         ) {
-          collisionOccured = true;
-          //console.warn (`Hash ${hashAdded} is already used. Resetting ${cssFile}.`)
-          const root = postcss.parse(css, { from: cssFile });
-
-          root.walkRules((rule) => {
-            rule.walkDecls('--scope-hash', (decl) => {
-              const next = decl.next();
-
-              // Check if next node is a comment and on the same line
-              if (
-                next &&
-                next.type === 'comment' &&
-                next.source.start.line === decl.source.end.line
-              ) {
-                next.remove();
-              }
-
-              decl.remove();
-            });
-          });
-          const out = await state.cssFormatter(root.toString());
-          await fs.writeFile(cssFile, out, 'utf-8');
+          collisionsOccured.push (cssFile);
         }
       }
     }
   }
 
-  if (collisionOccured) {
+  if (collisionsOccured.length > 0) {
     //await fsExtra.remove('merge');
    // await myGit.deleteLocalBranch('merge');
-    await await pull(devMode, true);
-    return;
+    await readTeamIDs ();
+    
+    for(const cssFile of collisionsOccured)
+    {
+      const root = postcss.parse(css, { from: cssFile });
+
+      root.walkRules((rule) => {
+        rule.walkDecls('--scope-hash', (decl) => {
+          const newDecl = postcss.decl({
+            prop: '--resolve-collision',
+            value: true,
+          });
+
+          rule.append(newDecl);
+        });
+      });
+      const out = await state.cssFormatter(root.toString());
+      await fs.writeFile(cssFile, out, 'utf-8');
+    }
   }
 
 
@@ -428,7 +517,7 @@ async function main(isRetry = false) {
   
   after = await readFilesAfter();
 
-  const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
+ // const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
   const filesDeleted = allFilesBefore
     .map((teamSrc, index) =>
       teamSrc.filter(
@@ -453,12 +542,8 @@ async function main(isRetry = false) {
       return fsDefault.existsSync(filePath)
 });
 
-  const hashDeleted = [...beforeHashMap.entries()]
-    .filter(([hash]) => !after.afterHashArr.includes(hash))
-    .map(([hash, { className }]) => ({
-      hash,
-      scopeName: className.replace(/-\w+$/, ''),
-    }));
+  const hashDeleted = scopeHashes
+    .filter(({hash, scopeName}) => !after.afterHashArr.find(f => f.hash === hash && f.scopeName === scopeName));
 
   if (filesDeleted.length > 0) {
     console.log('\nThe following files no longer exist in the repo:\n');
@@ -490,13 +575,13 @@ async function main(isRetry = false) {
     if (!myCssFiles) myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     const deletedFiles = [];
-
-    for (const { hash } of hashDeleted) {
+    
+    for (const { hash, scopeName } of hashDeleted) {
       for (const srcPath of myCssFiles) {
         const content = await fs.readFile(srcPath, 'utf8');
         if (
-          content.includes(`--scope-hash: ${hash}`) ||
-          content.includes(`--scope-hash:${hash}`)
+          (content.includes(`--scope-hash: ${hash}`) ||
+          content.includes(`--scope-hash:${hash}`)) && path.basename (srcPath, '.css') === scopeName
         ) {
           deletedFiles.push(srcPath);
           break;
@@ -622,4 +707,10 @@ async function main(isRetry = false) {
   }
 */
   return { filesDeleted, hashDeleted };
+}
+
+
+async function renameFileTo (file, to)
+{
+  
 }

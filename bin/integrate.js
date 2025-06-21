@@ -9,37 +9,42 @@ const myGit = simpleGit(process.cwd());
 const teamGit = simpleGit(`${process.cwd()}/${config.teamGit}`);
 const args = process.argv.slice(2); // Skip first two elements (node and script path)
 
-let name = null;
-
-args.forEach((arg) => {
- if (!name) {
-    name = arg;
-  }
+let from = null;
+let to = null;
+args.forEach((arg, index) => {
+  if (arg === '--from' && args[index + 1]) {
+    from = args[index + 1];
+  } else if (arg === '--to' && args[index + 1])
+    to = args[index + 1];
 });
 
-if (!name) {
-  throw new Error('Missing branch name.');
+if (!from) {
+  throw new Error('Missing --from');
+}
+if (!to)
+{
+  throw new Error ('Missing --to')
 }
 async function main() {
 
-    await myGit.checkout (`${name}-snapshot`);
+    await myGit.checkout (`${to}-snapshot`);
     try {
-        await myGit.mergeFromTo ('master', `${name}-snapshot`);
+        await myGit.mergeFromTo (from, `${to}-snapshot`);
     }catch(err)
     {
         console.error (err);
     }
-    await myGit.checkout (name);
-    await teamGit.checkout (name);
+    await myGit.checkout (to);
+    await teamGit.checkout (to);
 
     try{
-        await myGit.mergeFromTo ('master', name);
+        await myGit.mergeFromTo (from, to);
     }catch(err)
     {
         console.error (err);
     }
     try{
-        await teamGit.mergeFromTo ('master', name);
+        await teamGit.mergeFromTo (from, to);
     }catch(err)
     {
         console.error (err);

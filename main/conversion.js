@@ -581,6 +581,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     if (hashRead) {
       const mapObj = state.teamRepoHashMap[fileName + '/' + hashRead];
 
+      if (mapObj === 'duplicate')
+        throw Error (`💥 Hash conflict (${file})! Regenerate the hash and insert it into the team repo on the master branch.`)
+
       if (mapObj) {
         const { cssRoot, filePath } = mapObj;
 

@@ -7,6 +7,8 @@ import { Text } from 'domhandler';
 import os from 'os';
 import { selectAll, selectOne } from "css-select";
 import serializeNode from "dom-serializer";
+import {globby} from 'globby';
+import { unescape } from 'lodash';
 
 const networkInterfaces = os.networkInterfaces ();
 
@@ -764,6 +766,24 @@ function isGitError(err) {
   return err?.git === true || /fatal:|pathspec|repository|git|Git|stash|commit/i.test(err?.message || '');
 }
 
+
+async function renameFile(file, content, to)
+{
+  const fileName = path.basename (file, '.css');
+
+  const regex = new RegExp(`\\b(${escapedFile})(--|__|:)?\\b`, 'g');
+
+  // Replace with the new value, preserving the suffix if it exists
+  const replaced = content.replace(regex, (match, base, suffix = '') => {
+    return to + suffix;
+  });
+
+  await fs.promises.writeFile (file.replace (`${fileName}.css`, `${to}.css`), replaced, 'utf-8');
+  await fs.promises.unlink (file);
+}
+
+
+
 export {
   state,
   setConfig,
@@ -788,5 +808,6 @@ export {
   getHasClassRegex,
   getHasClassNameRegex,
   serializeHtml,
-  isGitError
+  isGitError,
+  renameFile
 };
