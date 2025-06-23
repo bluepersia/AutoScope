@@ -1,5 +1,9 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
+**This tool has been tested with small tests. The next step is to apply it to realistic projects**
+**Vite/Webpack will be supported, but currently untested**
+**Thanks for your patience**
+
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
 The aim of this tool:
