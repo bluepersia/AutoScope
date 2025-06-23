@@ -1,6 +1,6 @@
 {
   "name": "auto-scope",
-  "version": "0.1.9",
+  "version": "0.1.91",
   "author": {
     "name": "Marco Zimmermann",
     "email": "marcoenriquezimmermann@gmail.com",
@@ -71,5 +71,9 @@
     "simple-git": "^3.28.0",
     "stylelint": "^16.21.0",
     "stylelint-config-standard": "^38.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluepersia/AutoScope"
   }
 }
