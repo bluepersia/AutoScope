@@ -10,7 +10,7 @@ export default {
   dontHashFirst: true, // The first scope of a certain type doesn't get an ID or hash
   mergeCss: false, // Merge all the CSS into one file
   teamGit: '', //The git repo of the team/main project (private mode)
-  teamSrc: '', // Team src folder/s to scan for class names already used
+  teamSrc: false, // Team src folder/s to scan for class names already used
   copyFiles: true, // Copy rest of files directly to output, as they are
   globalCss: '', //Css that should not be scoped and only copied as is 
   flattenCombis: [], //Flatten combinators, e.g. > becomes _a_

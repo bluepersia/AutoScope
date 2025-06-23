@@ -59,6 +59,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
 
   state.config.initOutputDir = state.config.outputDir;
   if (devMd) {
+    
     state.config.outputDir =
       state.config.teamSrc?.length <= 1
         ? `dev-temp/${state.config.teamSrc[0]}`
