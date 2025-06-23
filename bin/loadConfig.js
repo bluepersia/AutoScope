@@ -4,6 +4,7 @@ export default async function loadConfig ()
 {
     try {
         const config = await import(path.resolve(process.cwd(), 'auto-scope.config.js')).then (mod => mod.default);
+        return config;
     }
     catch(err)
     {
@@ -12,4 +13,6 @@ export default async function loadConfig ()
         e.stack = '';
         throw (e);
     }
+
+    
 }
