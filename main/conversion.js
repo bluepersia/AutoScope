@@ -27,8 +27,6 @@ import cloneDeep from 'lodash/cloneDeep.js'
 import stylelint from 'stylelint';
 import { fileURLToPath } from 'url';
 import { decl } from 'postcss';
-import { LocalStorage } from 'node-localstorage';
-const localStorage = new LocalStorage('./scratch');
 
 // Equivalent to __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -190,21 +188,26 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       return obj;
     })
   );
+
+  for(const globalCssFile of globalCssFiles)
+  {
+    const relativePath = path.relative(inputDir, globalCssFile);
+   
+    let outPath = path.join(outputDir, relativePath);
+    
+    await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+    await fs.promises.copyFile(globalCssFile, outPath);
+
+  }
+
   const filesFound = {};
   for (let { file, fileName, css, hasHash } of cssFilesObjs) {
 
    
-    const isGlobal = globalCssFiles.includes(file);
-
     const relativePath = path.relative(inputDir, file);
    
     let outPath = path.join(outputDir, relativePath);
     
-    if (isGlobal) {
-      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.promises.copyFile(file, outPath);
-      continue;
-    }
 
     if (state.config.devMode)
       {
@@ -230,7 +233,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
     let scopeIndex = 1;
 
-    const cachedId = findIdFromCache(fileName, { filePath: file });
+    const cachedId =  findIdFromCache(fileName, { filePath: file });
     const freeId = getFreeId(fileName);
 
     if (cachedId && freeId > cachedId.id) scopeIndex = cachedId.id;
@@ -270,9 +273,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       });
 
       newDecl.raws.semicolon = true;
-      const dummy = postcss.comment({ text: 'DUMMY' });
-      dummy.raws.before = '\n';
-      rule.prepend(dummy);
+     // const dummy = postcss.comment({ text: 'DUMMY' });
+      //dummy.raws.before = '\n';
+      //rule.prepend(dummy);
 
       if (localConfig.teamSrc) {
         newDecl.raws.value = {
@@ -291,6 +294,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       }
       
       newDecl.raws.before = '\n  ';
+      /*
       const next = dummy.next();
 
       if (next && typeof next.raws.before === 'string') {
@@ -298,7 +302,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
         const indent = match ? match[2] : '';
         next.raws.before = '\n' + indent;
-      }
+      }*/
     }
 
     //if (!scopeHashsMap.hasOwnProperty(fileName))
@@ -382,6 +386,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         let resolveTag;
         if (hash === 'READ') {
           hashRead = findHash();
+          
           const idWithHash = findIdFromCache(fileName, { hash: hashRead });
 
           hash = hashRead;
@@ -393,6 +398,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               suffixOverride = idWithHash.suffix;
             }
           }
+         /* else if (idWithHash?.localHash)
+          {
+            scopeIndex = idWithHash.id;
+          }*/
 
           if (resolveTag) {
             
@@ -404,8 +413,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             else await fs.promises.writeFile(file, out, 'utf-8');
           }
         }
+        const idObj = { id: scopeIndex , filePath: file};
 
-        addIdToIdCache(fileName, { filePath: file, id: scopeIndex });
+        /*
+        if(state.config.teamGit)
+          idObj.localHash = hash;
+        else 
+          // idObj.filePath = file;*/
+
+        addIdToIdCache(fileName, idObj);
 
         //scopeHashsMap[fileName].add(hash);
         scopeHashsMap.add(hash);
@@ -429,15 +445,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
         if (resolveTag) console.log(`Resolved to ${selectorsObj.hashedName}`);
         
-        const currNameState = state.renameCache[hash];
-        if(!currNameState)
-          state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
-        else if (selectorsObj.hashedName !== currNameState.to)
+        if (state.config.teamGit)
         {
-          const rename = state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
-          const isCollision = state.nameCollisions.has (hash);
-          if (isCollision)
-            console.log (`🧬 Duplicate detected! ${rename.from} has been renamed to ${rename.to}`);
+          const currNameState = state.renameCache[hash];
+          if(!currNameState)
+            state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
+          else if (selectorsObj.hashedName !== currNameState.to)
+          {
+            state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+          }
         }
         selectors[file] = selectorsObj;
 
@@ -745,8 +761,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     if (delayedWrite) await fs.promises.writeFile(file, delayedWrite, 'utf-8');
   }
 
-  localStorage.setItem ('renameCache', JSON.stringify (state.renameCache));
- 
+  if (state.config.teamGit)
+    state.localStorage.setItem ('renameCache', JSON.stringify (state.renameCache));
+
+  /*
+  const IDsCacheOnlyLocalHashes = {}
+  for(const [key, arr] of Object.entries (state.scopeIDsCache))
+    IDsCacheOnlyLocalHashes[key] = arr.filter (obj => obj.localHash);
+  state.localStorage.setItem ('scopeIDsCache', JSON.stringify (IDsCacheOnlyLocalHashes));*/
+
   let mergedOutpath;
   if (config.mergeCss) {
     let mergedCss = Object.values(mergeCssMap).join('\n\n');

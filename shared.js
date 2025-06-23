@@ -7,9 +7,14 @@ import { Text } from 'domhandler';
 import os from 'os';
 import { selectAll, selectOne } from "css-select";
 import serializeNode from "dom-serializer";
+import fg from 'fast-glob';
 import { LocalStorage } from 'node-localstorage';
-const localStorage = new LocalStorage('./scratch');
+import { default as inquirer } from 'inquirer';
+const lsPath = './local-storage';
+import { globby } from 'globby';
 
+
+const cwd = process.cwd();
 
 const networkInterfaces = os.networkInterfaces ();
 
@@ -97,9 +102,10 @@ const state = {
   teamRepoHashMap: {},
   isCopySrc: true,
   astCache: {},
-  hashLength: 3,
-  renameCache: JSON.parse(localStorage.getItem('renameCache') ?? '{}'),
-  nameCollisions: new Set()
+  renameCache: {},
+  nameCollisions: new Set(),
+  localStorage: null,
+  lsPath
 };
 
 
@@ -135,15 +141,21 @@ function addIdToIdCache(scopeName, idObj) {
     const currObj = arr[currIndex];
 
     if (idObj.hash) {
-      if ((!currObj.hash && !currObj.team)|| state.preserveCollidingSuffixes)
+      if ((!currObj.hash && !currObj.team))
         overwrite = true;
       else 
-        state.nameCollisions.add (idObj.hash);
+      {
+        if(state.preserveCollidingSuffixes)
+          state.nameCollisions.add (idObj.hash);
+        else
+          overwrite = true;
+      }
     }
 
     if (idObj.team){
-      if(currObj.hash && !state.preserveCollidingSuffixes)
-        state.nameCollisions.add (currObj.hash);
+      
+      if(currObj.hash && state.preserveCollidingSuffixes)
+        state.nameCollisions.add (currObj.hash[0]);
 
       if (!(currObj.hash && state.preserveCollidingSuffixes))
         overwrite = true;
@@ -152,11 +164,19 @@ function addIdToIdCache(scopeName, idObj) {
 
     if (Object.keys(currObj).length === 1 && currObj.id) overwrite = true;
 
-    if (overwrite) arr[currIndex] = idObj;
+    if (overwrite) { 
+      if (currObj.hash && idObj.hash)
+        currObj.hash.push (idObj.hash);
+      else 
+      arr[currIndex] = idObj;
+    }
 
     return;
   }
 
+  if(idObj.hash)
+    idObj.hash = [idObj.hash];
+  
   arr.push(idObj);
 }
 
@@ -205,7 +225,8 @@ function findIdFromCache(scopeName, obj) {
     state.scopeIDsCache[scopeName].find(
       (obj2) =>
         (obj.filePath && obj2.filePath === obj.filePath) ||
-        (obj.hash && obj2.hash === obj.hash)
+        (obj.hash && (obj2.hash?.includes (obj.hash))) //||
+        //(obj.localHash && obj2.localHash === obj.localHash)
     )
   );
 }
@@ -797,10 +818,233 @@ function isSelectorTargetClass (selector, targetClass)
   if(!selector)
     return false;
   const spl = selector.split (',').map (sel => sel.trim());
-
+  
   return spl.find(sel => sel === targetClass) || spl.find(sel => sel.startsWith(`${targetClass}_`)) || spl.find(sel => sel.startsWith(`${targetClass}--`)) || spl.find (sel => sel.startsWith(`${targetClass}:`)) || spl.find (sel => sel.startsWith(`${targetClass} `));
 }
 
+
+
+async function getPrePullState ()
+{
+  const allFilesBefore = await Promise.all(
+      state.config.teamSrc.map(
+        async (src) =>
+          await fg(`${state.config.teamGit}/${src}/**/*`, {
+            cwd,
+            dot: true,
+            onlyFiles: true,
+          })
+      )
+    );
+  
+    const cssFiles = allFilesBefore
+      .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
+      .flat();
+  
+    const scopeHashes = [];
+    for (const cssFile of cssFiles) {
+      const content = await readFileSafe(cssFile);
+      const hashes = parseCssScopeHashes(content);
+      scopeHashes.push(...hashes);
+    }
+
+
+    return {scopeHashes, allFilesBefore}
+}
+
+function parseCssScopeHashes(cssContent) {
+  const results = [];
+
+  const rules = cssContent.split('}');
+  for (const rule of rules) {
+    const parts = rule.split('{');
+    if (parts.length < 2) continue;
+    const selector = parts[0].trim();
+    const body = parts[1].trim();
+
+    const classMatches = [...selector.matchAll(/\.[a-zA-Z0-9_-]+/g)];
+    if (classMatches.length === 0) continue;
+
+    const hashMatch = body.match(/--scope-hash\s*:\s*([^;]+);?/);
+    if (!hashMatch) continue;
+
+    const hash = hashMatch[1].trim().split(' /*')[0];
+
+    for (const m of classMatches) {
+      //const className = m[0].slice(1);
+      
+      results.push({hash});
+    }
+  }
+
+  return results;
+}
+
+async function readFileSafe(filepath) {
+  try {
+    return await fs.promises.readFile(filepath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+
+async function readFilesAfter() {
+    const allFilesAfter = await Promise.all(
+      state.config.teamSrc.map(
+        async (src) =>
+          await fg(`${state.config.teamGit}/${src}/**/*`, {
+            cwd,
+            dot: true,
+            onlyFiles: true,
+          })
+      )
+    );
+
+    const cssFilesAfter = allFilesAfter
+      .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
+      .flat();
+
+    const scopeHashesAfter = [];
+    for (const cssFile of cssFilesAfter) {
+      const content = await readFileSafe(cssFile);
+      const hashes = parseCssScopeHashes(content);
+      scopeHashesAfter.push(...hashes);
+    }
+    const afterHashArr = scopeHashesAfter;
+
+    return { afterHashArr, allFilesAfter};
+  }
+
+
+  async function handleFilesDeleted (myGit, allFilesBefore, allFilesAfter)
+  {
+    const filesDeleted = allFilesBefore
+    .map((teamSrc, index) =>
+      teamSrc.filter(
+        (f) => !f.endsWith('.css') && !allFilesAfter[index].includes(f)
+      )
+    )
+    .map((teamSrc, index) =>
+      teamSrc.map((p) =>
+        path.join(
+          config.inputDir,
+          path.relative(
+            state.config.teamSrc.length <= 1
+              ? `${state.config.teamGit}/${state.config.teamSrc[index]}`
+              : state.config.teamGit,
+            p
+          )
+        )
+      )
+    )
+    .flat()
+    .filter((filePath) => {  
+      return fs.existsSync(filePath)
+});
+
+  
+  if (filesDeleted.length > 0) {
+    console.log('\nThe following files no longer exist in the repo:\n');
+    filesDeleted.forEach((file) => console.log('  -', file));
+    const { confirmDelete } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmDelete',
+        message:
+          'Do you want to delete these files from your source directory?',
+        default: false,
+      },
+    ]);
+
+    if (confirmDelete) {
+      for (const fileRel of filesDeleted) {
+        try {
+          await fs.promises.unlink(fileRel);
+          console.log(`Deleted file: ${fileRel}`);
+        } catch (err) {
+          console.warn(`Failed to delete ${fileRel}: ${err.message}`);
+        }
+      }
+      await myGit.add (filesDeleted);
+    }
+  }
+  }
+
+
+  async function handleHashesDeleted(myGit, scopeHashes, afterHashArr)
+  {
+    const hashDeleted = scopeHashes
+      .filter(({hash}) => !afterHashArr.find(f => f.hash === hash));
+
+    
+      if (hashDeleted.length > 0) {
+        const myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
+    
+        const deletedFiles = [];
+        
+        for (const { hash} of hashDeleted) {
+          for (const srcPath of myCssFiles) {
+            const content = await fs.promises.readFile(srcPath, 'utf8');
+            if (
+              (content.includes(`--scope-hash: ${hash}`) ||
+              content.includes(`--scope-hash:${hash}`))
+            ) {
+              deletedFiles.push(srcPath);
+              break;
+            }
+          }
+        }
+    
+        if (deletedFiles.length > 0) {
+          console.log(
+            '\nThe following files in your source have become invalidated (either through deletion or hash removal in the repo):\n'
+          );
+    
+          deletedFiles.forEach((file) => console.log('  -', file));
+          const { confirmDelete } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'confirmDelete',
+              message:
+                'Do you want to delete these files from your source directory?',
+              default: false,
+            },
+          ]);
+    
+          if (confirmDelete) {
+            for (const deletedFile of deletedFiles) {
+              try {
+                await fs.promises.unlink(deletedFile);
+              } finally {
+              }
+            }
+            await myGit.add (deletedFiles);
+          }
+        }
+      }
+  }
+
+  async function readHashesCollided()
+  {
+    const cssFiles = await globby(`${state.config.inputDir}/**/*.css`);
+
+    for(const cssFile of cssFiles)
+    {
+      const content = await fs.promises.readFile (cssFile, 'utf-8');
+
+      if(content.includes ('--scope-hash'))
+      {
+        const hashMatch = content.match(/--scope-hash\s*:\s*([^;]+);?/);
+        if (!hashMatch) continue;
+
+        const hash = hashMatch[1].trim().split(' /*')[0];
+
+        if (state.nameCollisions.has (hash))
+          console.log (`🧬 ${cssFile} is colliding! It will have a new suffix on next build.`);
+      }
+    }
+  }
 export {
   state,
   setConfig,
@@ -827,5 +1071,10 @@ export {
   serializeHtml,
   isGitError,
   renameFile,
-  isSelectorTargetClass
+  isSelectorTargetClass,
+  getPrePullState,
+  readFilesAfter,
+  handleFilesDeleted,
+  handleHashesDeleted,
+  readHashesCollided
 };

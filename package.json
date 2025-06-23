@@ -1,6 +1,14 @@
 {
   "name": "auto-scope",
-  "version": "0.1.5",
+  "version": "0.1.6",
+  "author": {
+    "name": "Marco Zimmermann",
+    "email": "marcoenriquezimmermann@gmail.com",
+    "url": "https://github.com/bluepersia"
+  },
+  "bugs": {
+    "url": "https://github.com/bluepersia/AutoScope/issues"
+  },
   "bin": {
     "team-sync": "./bin/syncTeamRepo.js",
     "build": "./bin/build.js",

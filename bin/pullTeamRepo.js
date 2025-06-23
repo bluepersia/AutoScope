@@ -11,15 +11,13 @@ import {
   checkDevMode,
   build,
 } from '../index.js';
-import { isGitError, state, renameFile } from '../shared.js';
+import { isGitError, state, renameFile, getPrePullState, readFilesAfter, handleFilesDeleted, handleHashesDeleted, readHashesCollided } from '../shared.js';
 import { readTeamIDs, syncTeamRepo } from '../main/teamRepo.js';
 import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
 import { globby } from 'globby';
 import postcss from 'postcss';
 import fs from 'fs/promises';
-import fsDefault from 'fs';
-import fg from 'fast-glob';
 import simpleGit from 'simple-git';
 import loadConfig from './loadConfig.js';
 import {readFilesUsing} from './where.js';
@@ -140,6 +138,8 @@ async function pull(devMd = false, isRetry = false) {
  
     await myGit.reset(['--hard', currentBranch.my]);
     await myGit.checkout (currentBranch.my);
+
+    await readHashesCollided ();
   }, 1000);
 }
 catch(err)
@@ -169,50 +169,13 @@ catch(err)
 }
 
 
-
-async function readFileSafe(filepath) {
-  try {
-    return await fs.readFile(filepath, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
-function parseCssScopeHashes(cssContent) {
-  const results = [];
-
-  const rules = cssContent.split('}');
-  for (const rule of rules) {
-    const parts = rule.split('{');
-    if (parts.length < 2) continue;
-    const selector = parts[0].trim();
-    const body = parts[1].trim();
-
-    const classMatches = [...selector.matchAll(/\.[a-zA-Z0-9_-]+/g)];
-    if (classMatches.length === 0) continue;
-
-    const hashMatch = body.match(/--scope-hash\s*:\s*([^;]+);?/);
-    if (!hashMatch) continue;
-
-    const hash = hashMatch[1].trim().split(' /*')[0];
-
-    for (const m of classMatches) {
-      //const className = m[0].slice(1);
-      
-      results.push({hash});
-    }
-  }
-
-  return results;
-}
-
 function htmlUsesClass(htmlContent, className) {
   const regex = new RegExp(`class=["'][^"']*\\b${className}\\b[^"']*["']`, 'i');
   return regex.test(htmlContent);
 }
 
 async function main(isRetry = false) {
-  const cwd = process.cwd();
+  
 
   const inputDir = state.config.inputDir;
   if (!inputDir) {
@@ -228,27 +191,8 @@ async function main(isRetry = false) {
       'You are on the master branch! To do a dev-pull, you must be on a different branch for merging.'
     );
 
-  const allFilesBefore = await Promise.all(
-    state.config.teamSrc.map(
-      async (src) =>
-        await fg(`${state.config.teamGit}/${src}/**/*`, {
-          cwd,
-          dot: true,
-          onlyFiles: true,
-        })
-    )
-  );
+  const {allFilesBefore, scopeHashes} = await getPrePullState ();
 
-  const cssFiles = allFilesBefore
-    .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
-    .flat();
-
-  const scopeHashes = [];
-  for (const cssFile of cssFiles) {
-    const content = await readFileSafe(path.join(cwd, cssFile));
-    const hashes = parseCssScopeHashes(content);
-    scopeHashes.push(...hashes);
-  }
   await myGit.add('.');
   await teamGit.add('.');
   await myGit.commit('Save WIP before master backup');
@@ -312,33 +256,7 @@ async function main(isRetry = false) {
   teamGit.commit ('Pull merge completed.');
 }
 
-  async function readFilesAfter() {
-    const allFilesAfter = await Promise.all(
-      state.config.teamSrc.map(
-        async (src) =>
-          await fg(`${state.config.teamGit}/${src}/**/*`, {
-            cwd,
-            dot: true,
-            onlyFiles: true,
-          })
-      )
-    );
-
-    const cssFilesAfter = allFilesAfter
-      .map((teamSrcFiles) => teamSrcFiles.filter((f) => f.endsWith('.css')))
-      .flat();
-
-    const scopeHashesAfter = [];
-    for (const cssFile of cssFilesAfter) {
-      const content = await readFileSafe(path.join(cwd, cssFile));
-      const hashes = parseCssScopeHashes(content);
-      scopeHashesAfter.push(...hashes);
-    }
-
-    const afterHashArr = scopeHashesAfter;
-
-    return { afterHashArr, allFilesAfter };
-  }
+  
 
   //let after = await readFilesAfter();
 
@@ -347,7 +265,7 @@ async function main(isRetry = false) {
   //await myGit.commit('Save master before returning');
 
   //await myGit.checkout(currentBranch.my);
-  await teamGit.checkout(currentBranch.team);
+
 
 
 
@@ -401,7 +319,7 @@ async function main(isRetry = false) {
     }
   }
 
-
+  await teamGit.checkout(currentBranch.team);
 
   try {
     await teamGit.mergeFromTo('master', currentBranch.team);
@@ -428,63 +346,13 @@ async function main(isRetry = false) {
   state.preserveCollidingSuffixes = true;
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
-  state.preserveCollidingSuffixes = false;
   await gitAdd (myGit, 'merge');
   await myGit.commit('Commit snapshot build.');
   
   
 
  // const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
-  const filesDeleted = allFilesBefore
-    .map((teamSrc, index) =>
-      teamSrc.filter(
-        (f) => !f.endsWith('.css') && !after.allFilesAfter[index].includes(f)
-      )
-    )
-    .map((teamSrc, index) =>
-      teamSrc.map((p) =>
-        path.join(
-          config.inputDir,
-          path.relative(
-            state.config.teamSrc.length <= 1
-              ? `${state.config.teamGit}/${state.config.teamSrc[index]}`
-              : state.config.teamGit,
-            p
-          )
-        )
-      )
-    )
-    .flat()
-    .filter((filePath) => {  
-      return fsDefault.existsSync(filePath)
-});
-
-  
-  if (filesDeleted.length > 0) {
-    console.log('\nThe following files no longer exist in the repo:\n');
-    filesDeleted.forEach((file) => console.log('  -', file));
-    const { confirmDelete } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirmDelete',
-        message:
-          'Do you want to delete these files from your source directory?',
-        default: false,
-      },
-    ]);
-
-    if (confirmDelete) {
-      for (const fileRel of filesDeleted) {
-        try {
-          await fs.unlink(fileRel);
-          console.log(`Deleted file: ${fileRel}`);
-        } catch (err) {
-          console.warn(`Failed to delete ${fileRel}: ${err.message}`);
-        }
-      }
-      await myGit.add (filesDeleted);
-    }
-  }
+  await handleFilesDeleted (myGit, allFilesBefore,  after.allFilesAfter);
 
   await myGit.commit ('Commit any deleted content');
   await myGit.checkout (currentBranch.my);
@@ -508,57 +376,12 @@ async function main(isRetry = false) {
   state.config.outputDir = 'merge';
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
+  state.preserveCollidingSuffixes = false;
   await gitAdd (myGit, 'merge');
 
   
-  const hashDeleted = scopeHashes
-  .filter(({hash}) => !after.afterHashArr.find(f => f.hash === hash));
+  await handleHashesDeleted (myGit, scopeHashes, after.afterHashArr);
 
-  if (hashDeleted.length > 0) {
-    const myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
-
-    const deletedFiles = [];
-    
-    for (const { hash} of hashDeleted) {
-      for (const srcPath of myCssFiles) {
-        const content = await fs.readFile(srcPath, 'utf8');
-        if (
-          (content.includes(`--scope-hash: ${hash}`) ||
-          content.includes(`--scope-hash:${hash}`))
-        ) {
-          deletedFiles.push(srcPath);
-          break;
-        }
-      }
-    }
-
-    if (deletedFiles.length > 0) {
-      console.log(
-        '\nThe following files in your source have become invalidated (either through deletion or hash removal in the repo):\n'
-      );
-
-      deletedFiles.forEach((file) => console.log('  -', file));
-      const { confirmDelete } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmDelete',
-          message:
-            'Do you want to delete these files from your source directory?',
-          default: false,
-        },
-      ]);
-
-      if (confirmDelete) {
-        for (const deletedFile of deletedFiles) {
-          try {
-            await fs.unlink(deletedFile);
-          } finally {
-          }
-        }
-        await myGit.add (deletedFiles);
-      }
-    }
-  }
   await myGit.commit('Commit build.');
 
   await myGit.checkout(`${currentBranch.my}-snapshot`);
@@ -626,7 +449,7 @@ async function main(isRetry = false) {
     }
   }
 */
-  return { filesDeleted, hashDeleted };
+  return true;
 }
 
 

@@ -26,7 +26,8 @@ if (fs.existsSync ('.gitignore'))
 
 
 gitIgnore += `/dist
-/dev-temp`
+/dev-temp
+/local-storage`
 
 fs.writeFileSync ('.gitignore', gitIgnore);
 

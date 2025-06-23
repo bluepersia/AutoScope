@@ -209,7 +209,7 @@ function warnRename (hash)
           const sel = rule.selector.trim();
           const hash = decl.value.split(' ')[0].trim();
           const targetClass = rule.selector.split(',')[0].split(' ')[0].trim();
-          const prevClass = state.renameCache[hash]?.from;
+          const prevClass = `.${state.renameCache[hash]?.from}`;
 
           let className = sel.split(',')[0].replaceAll('.', '');
 
@@ -240,11 +240,13 @@ function warnRename (hash)
 
           for (let i = ruleIndex + 1; i < root.nodes.length; i++) {
             const rule = root.nodes[i];
-            if (isSelectorTargetClass (sel, targetClass)) {
+            if (isSelectorTargetClass (rule.selector, targetClass)) {
               adjacentRules.push(rule);
             } else if (rule.type !== 'rule') {
               adjacentRules.push(rule);
-              if (rule.name === 'media') adjacentRules.push(...rule.nodes);
+              if (rule.name === 'media') {
+                adjacentRules.push(...rule.nodes);
+              }
             } else {
               const prevFound = isSelectorTargetClass (rule.selector, prevClass);
               if(prevFound)
@@ -324,23 +326,28 @@ function warnRename (hash)
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
       let extracted = [];
-      const scopeClass = scopeSelector.slice(1);
+      const scopeClass = targetClass.slice (1);
       const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
 
+     // console.log (targetClass);
+      /*
       let scopeRegex;
 
       if (localConfig.dontFlatten) {
         // Replace all occurrences with .baseClass
-        scopeRegex = makeScopeRegexGlobal(scopeSelector);
+        scopeRegex = makeScopeRegexGlobal(scopeSelector.split(',')[0].split(' ')[0].trim());
       } else {
         // Replace first occurrence with .baseClass, all others with ""
-        scopeRegex = makeScopeRegexFirstThenEmpty(scopeSelector);
-      }
+        scopeRegex = makeScopeRegexFirstThenEmpty(scopeSelector.split(',')[0].split(' ')[0].trim());
+      }*/
+        const regex = new RegExp(`${targetClass}(?=(_|--|:|,|\\s|$))`, 'g');
+
 
       adjacentRules.forEach((rule) => {
         const isKeyframes = rule.name === 'keyframes';
 
         const isMedia = !isKeyframes && rule.name === 'media';
+
 
         if (isKeyframes) {
           const oldName = rule.params;
@@ -375,12 +382,17 @@ function warnRename (hash)
         // Rule must start with full scope selector (e.g. ".recipe-page-234ffb")
         const sels = originalSelector.split(',').map((s) => {
           let trimmed = s.trim();
-          if (trimmed !== targetClass && !trimmed.startsWith (`${targetClass}__`) && !trimmed.startsWith(`${targetClass}--`) && !trimmed.startsWith (`${targetClass}:`) && !trimmed.startsWith(`${targetClass} `))
+          if (trimmed !== targetClass && !trimmed.startsWith (`${targetClass}_`) && !trimmed.startsWith(`${targetClass}--`) && !trimmed.startsWith (`${targetClass}:`) && !trimmed.startsWith(`${targetClass} `))
             return `${trimmed}__IGNORE`;
+          trimmed = trimmed.replace(regex, `.${baseClass}`);
+
+          if (!localConfig.dontFlatten)
+            trimmed = unflatten (trimmed, localConfig);
           return trimmed;
       });
+
       
-      originalSelector = sels.join (',');
+
 
         if (strip.length > 0) {
           const hasScopeHash = rule.nodes?.some(
@@ -396,6 +408,9 @@ function warnRename (hash)
             rule.append(newDecl);
           }
         }
+        
+        
+        /*
 
         let newSelector;
         if (localConfig.dontFlatten)
@@ -410,12 +425,15 @@ function warnRename (hash)
             return ''; // Remove duplicates after first occurrence
           });
 
-        
+
+          const newSelector = sels.join(', ');
+       if (!localConfig.dontFlatten) {
           // Then apply unflatten as usual
           newSelector = unflatten(newSelector, localConfig);
         }
 
-        rule.selector = newSelector;
+        */
+        rule.selector = sels.join(', ');
 
         if (!(rule.parent?.type === 'atrule' && rule.parent.name === 'media'))
           extracted.push(rule);
@@ -674,15 +692,19 @@ function warnRename (hash)
       if (!baseClassMap[baseClass])
         baseClassMap[baseClass] = 0;
       
-      baseClassMap[baseClass]++;
-
-      baseClassCount = baseClassMap[baseClass];
+      
 
       let nodes = cssSelect.selectAll (elem => {
         if (!elem.attribs || !elem.attribs.class) return false;
         return elem.attribs.class.split (' ').includes (klass) && elem.attribs['data-scope-hash'] && myHashes.has (elem.attribs['data-scope-hash']);
       }, dom);
 
+      if (nodes.length > 0)
+      {
+        baseClassMap[baseClass]++;
+
+        baseClassCount = baseClassMap[baseClass];
+      }
 
       function processNode (node, isParent = true)
       {

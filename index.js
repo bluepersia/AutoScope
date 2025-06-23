@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import { pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import simpleGit from 'simple-git';
+import { LocalStorage } from 'node-localstorage';
 
 let prettier;
 let ESLint;
@@ -136,6 +137,12 @@ function initTeamSrc() {
 
   if (state.config.teamGit)
   {
+    if (!fs.existsSync(state.lsPath)) {
+      fs.mkdirSync(state.lsPath, { recursive: true }); // Creates the directory
+    }
+    state.localStorage = new LocalStorage (state.lsPath);
+    state.renameCache = JSON.parse(state.localStorage.getItem('renameCache') ?? '{}');
+
     state.teamGit = simpleGit(`${process.cwd()}/${state.config.teamGit}`);
 
     if (state.config.teamSrc.length <= 1)

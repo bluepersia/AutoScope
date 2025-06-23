@@ -141,6 +141,15 @@ function getScopedHtml() {
 
 During compilation, your HTML and CSS will be uniquely scoped automatically, and the CSS and HTML converted to the scoped versions.
 
+#### `npx dev`
+
+Starts dev mode, which watches your files in `inputDir` in realtime. Uses a sandbox environment folder `dev-temp`.
+
+#### `npx build`
+
+Build from `inputDir` to `outputDir`(or in private mode, to `teamSrc`)
+In private mode, build regularly to commit significant changes. Your live edits only affect the temporary dev folder in dev mode, not the actual team repo.
+
 ### 🔒 Private Use (without team-wide adoption)
 
 #### 🗂️ Organization
@@ -172,10 +181,11 @@ When you're done and you've submitted your work and it has been merged successfu
 2. Pull from master.
 3. If your personal repo is not online, just local, the working branch will be merged back into master.
 
-##### 🎯 npx resolve --name `<class name>`
+##### 🎯 Git repo collisions
 
-Regenerate scope hash and class name based on current team repo state.
-Use this to resolve collisions that happen because other people added same class name as you to the repo.
+In private mode, collisions can happen due to git not being synced up perfectly, or other people using a name you already used.
+When this happens, AutoScope will notify you about it, and that on next build, your suffix will be regenerated.
+I recommend building and committing this immediately with a clear message about rename.
 
 #### 💡 Tip
 

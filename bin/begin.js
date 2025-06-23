@@ -3,9 +3,9 @@
 import loadConfig from './loadConfig.js';
 let config = await loadConfig();
 import simpleGit from 'simple-git';
-import {state, isGitError} from '../shared.js';
+import {state, isGitError, getPrePullState, readFilesAfter, handleFilesDeleted, handleHashesDeleted, readHashesCollided} from '../shared.js';
 import {init} from '../index.js';
-import {syncTeamRepo} from "../main/teamRepo.js";
+import {readTeamIDs, syncTeamRepo} from "../main/teamRepo.js";
 import { globby } from 'globby';
 const myGit = simpleGit(process.cwd());
 const teamGit = simpleGit(`${process.cwd()}/${config.teamGit}`);
@@ -42,8 +42,17 @@ async function main() {
     }catch(err) {}
     
     await teamGit.checkout ('master');
+
+    const {scopeHashes, allFilesBefore} = await getPrePullState ();
+    
     await teamGit.pull ('origin', 'master');
     await myGit.checkoutLocalBranch(name);
+
+    const {allFilesAfter, afterHashArr} = await readFilesAfter(scopeHashes);
+
+    await handleFilesDeleted (myGit, allFilesBefore, allFilesAfter);
+    await handleHashesDeleted (myGit, scopeHashes, afterHashArr);
+
     try {
       await syncTeamRepo(config);
     }catch(err)
@@ -64,6 +73,9 @@ async function main() {
     await teamGit.checkoutLocalBranch(name);
     await myGit.checkout (name);
  
+    state.preserveCollidingSuffixes = true;
+    await readTeamIDs ();
+    await readHashesCollided ();
 }
 
 try {
