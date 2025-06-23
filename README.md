@@ -4,7 +4,7 @@
 **Vite/Webpack will be supported, but currently untested.**
 **Thanks for your patience**
 
-Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!"
+Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!
 
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
