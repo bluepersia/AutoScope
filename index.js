@@ -822,10 +822,11 @@ async function build(
   cfg = config,
   runtimeMap = null,
   devMode = false,
-  overwrite = true
+  overwrite = true,
+  doReadTeamIDs = true
 ) {
   await setConfig(await init(cfg, runtimeMap, devMode));
-
+  
   const htmlFiles = await globby(`${state.config.inputDir}/**/*.html`);
   const jsFiles = await globby([
     `${state.config.inputDir}/**/*.js`,
@@ -836,8 +837,8 @@ async function build(
   const reactFiles = await globby([
     `${state.config.inputDir}/**/*.jsx`,
     `${state.config.inputDir}/**/*.tsx`,
-  ]);
-
+  ]);  
+  
   if (overwrite && (!state.config.teamGit || (state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir))) {
     if (fs.existsSync(state.config.outputDir))
       await fs.promises.rm(state.config.outputDir, {
@@ -847,7 +848,7 @@ async function build(
 
     await fs.promises.mkdir(state.config.outputDir);
   }
-
+ 
   if (
     state.config.copyFiles &&
     (!state.config.teamGit || state.config.devMode)
@@ -866,20 +867,22 @@ async function build(
       copyFiles(state.config.copyFiles, state.config.outputDir);
     }
   }
+  
 
   if (state.config.teamSrc) await readTeamIDs();
-
   //copyGlobalCss();
-
+  
+  
   await readMetaTags([...htmlFiles, ...jsFiles, ...reactFiles]);
 
+
+ 
   await writeCssAndHtml(
     cssFiles,
     findDomsInCache(htmlFiles),
     findDomsInCache(reactFiles),
     findDomsInCache(jsFiles)
   );
-
   if(state.teamGit && state.config.outputDir === state.config.initOutputDir)
     {
       try 
@@ -892,8 +895,8 @@ async function build(
         console.error('❌ Failed to check Git status:', err);
       }
     }
+  
 }
-
 function removeIdFromCache(filePath) {
   const scopeName = path.basename(filePath);
 

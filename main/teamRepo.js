@@ -8,7 +8,8 @@ import {
   getNumberSuffix,
   addIdToIdCache,
   serializeHtml,
-  findHtmlDeps
+  findHtmlDeps,
+  isSelectorTargetClass
 } from '../shared.js';
 import { writeCssAndHtml } from './conversion.js';
 import { readMetaTags } from './readMetaTags.js';
@@ -116,7 +117,7 @@ async function syncTeamRepo(
   }
 
   function unflatten(selector, localConfig) {
-    if (localConfig.dontFlatten) {
+    if (localConfig.dontFlatten || selector.includes ('__IGNORE')) {
       return selector;
     }
 
@@ -173,6 +174,21 @@ async function syncTeamRepo(
     return segs.join(' ');
   }
 
+const warnedRename = new Set();
+function warnRename (hash)
+{
+  if (warnedRename.has (hash))
+    return;
+
+  warnedRename.add (hash);
+  const rename = state.renameCache[hash];
+  if(!rename)
+    return;
+  console.warn (`🛰️ ${rename.from} was recently renamed to ${rename.to}`)
+}
+
+
+
   async function readAndWriteCss() {
     let scopes = [];
     const duplicateHashes = new Set();
@@ -192,8 +208,10 @@ async function syncTeamRepo(
         rule.walkDecls('--scope-hash', (decl) => {
           const sel = rule.selector.trim();
           const hash = decl.value.split(' ')[0].trim();
+          const targetClass = rule.selector.split(',')[0].split(' ')[0].trim();
+          const prevClass = state.renameCache[hash]?.from;
 
-          let className = sel.replaceAll('.', '');
+          let className = sel.split(',')[0].replaceAll('.', '');
 
           if (strip.length > 0) {
             if (!strip.includes(className)) return;
@@ -205,20 +223,37 @@ async function syncTeamRepo(
 
           for (let i = ruleIndex - 1; i >= 0; i--) {
             const rule = root.nodes[i];
-            if (rule.selector?.startsWith(sel)) adjacentRules.unshift(rule);
-            else break;
+            if (isSelectorTargetClass (rule.selector, targetClass)) adjacentRules.unshift(rule);
+            else {
+              const prevFound = isSelectorTargetClass (rule.selector, prevClass);
+              if(prevFound)
+              {
+                warnRename (hash);
+                console.log (`🧩 Detected ${prevFound} above. Is this supposed to be ${prevFound.replace (prevClass, targetClass)}?`)
+              }
+              break;
+            }
+            
           }
 
           adjacentRules.push(root.nodes[ruleIndex]);
 
           for (let i = ruleIndex + 1; i < root.nodes.length; i++) {
             const rule = root.nodes[i];
-            if (rule.selector?.startsWith(sel)) {
+            if (isSelectorTargetClass (sel, targetClass)) {
               adjacentRules.push(rule);
             } else if (rule.type !== 'rule') {
               adjacentRules.push(rule);
               if (rule.name === 'media') adjacentRules.push(...rule.nodes);
-            } else break;
+            } else {
+              const prevFound = isSelectorTargetClass (rule.selector, prevClass);
+              if(prevFound)
+              {
+                warnRename (hash);
+                console.log (`🧩 Detected ${prevFound} below. Is this supposed to be ${prevFound.replace (prevClass, targetClass)}?`)
+              }
+              break;
+            }
           }
 
           if (hash && (!fork || fork === hash)) {
@@ -227,17 +262,14 @@ async function syncTeamRepo(
               duplicateHashes.add (hash);
 
 
-            const scopeClass = sel.slice(1);
-            const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
             scopes.push({
               scopeSelector: sel,
               hash,
               teamCssPath: teamPath,
               scopeName,
               className,
+              targetClass,
               adjacentRules,
-              scopeClass,
-              baseClass
             });
           }
         });
@@ -252,9 +284,8 @@ async function syncTeamRepo(
       teamCssPath,
       scopeName,
       className,
+      targetClass,
       adjacentRules,
-      scopeClass,
-      baseClass
     } of scopes) {
       let outPath = null;
 
@@ -264,18 +295,13 @@ async function syncTeamRepo(
 
         if (
           (content.includes(`--scope-hash: ${hash}`) ||
-          content.includes(`--scope-hash:${hash}`)) && baseClass === path.basename (srcPath, '.css')
+          content.includes(`--scope-hash:${hash}`))
         ) {
           if (duplicateHashes.has (hash))
           {
-            const baseClassCount = scopes.reduce ((prev, curr) => curr.baseClass === baseClass && curr.hash === hash ? prev + 1 : prev, 0);
-           
-            if (baseClassCount > 1)
-            {
-              const err = new Error(`💥 Hash conflict (${srcPath})! Syncing cancelled to prevent fatal overwrites. Regenerate the hash and insert it into the team repo on the master branch.`);
-              err.stack = ''; 
-              throw err;
-            }
+            const err = new Error(`💥 Hash conflict (${srcPath})! Syncing cancelled to prevent fatal overwrites.`);
+            err.stack = ''; 
+            throw err;
           }
           myHashes.add (hash);
           outPath = srcPath.replace(path.basename(srcPath), `${scopeName}.css`);
@@ -298,7 +324,9 @@ async function syncTeamRepo(
       const localConfig = resolveConfigFor(outPath, config, config.inputDir);
 
       let extracted = [];
-      
+      const scopeClass = scopeSelector.slice(1);
+      const baseClass = scopeClass.replace(/-\w+$/, ''); // Remove hash or numeric suffix
+
       let scopeRegex;
 
       if (localConfig.dontFlatten) {
@@ -342,13 +370,17 @@ async function syncTeamRepo(
           return;
         }
 
-        const originalSelector = rule.selector;
+        let originalSelector = rule.selector;
 
         // Rule must start with full scope selector (e.g. ".recipe-page-234ffb")
-        const sels = originalSelector.split(',').map((s) => s.trim());
-        const matchesAll = sels.some((sel) => sel.startsWith(scopeSelector));
-
-        if (!matchesAll) return;
+        const sels = originalSelector.split(',').map((s) => {
+          let trimmed = s.trim();
+          if (trimmed !== targetClass && !trimmed.startsWith (`${targetClass}__`) && !trimmed.startsWith(`${targetClass}--`) && !trimmed.startsWith (`${targetClass}:`) && !trimmed.startsWith(`${targetClass} `))
+            return `${trimmed}__IGNORE`;
+          return trimmed;
+      });
+      
+      originalSelector = sels.join (',');
 
         if (strip.length > 0) {
           const hasScopeHash = rule.nodes?.some(
@@ -377,6 +409,8 @@ async function syncTeamRepo(
             }
             return ''; // Remove duplicates after first occurrence
           });
+
+        
           // Then apply unflatten as usual
           newSelector = unflatten(newSelector, localConfig);
         }
@@ -920,6 +954,8 @@ if (postBuild)
 }
 
 function clearTeamFromIDCache() {
+  state.nameCollisions = new Set();
+  
   for (const [key, arr] of Object.entries(state.scopeIDsCache))
     state.scopeIDsCache[key] = arr.filter((obj) => !obj.hash && !obj.team);
 

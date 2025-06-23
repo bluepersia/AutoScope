@@ -7,8 +7,9 @@ import { Text } from 'domhandler';
 import os from 'os';
 import { selectAll, selectOne } from "css-select";
 import serializeNode from "dom-serializer";
-import {globby} from 'globby';
-import { unescape } from 'lodash';
+import { LocalStorage } from 'node-localstorage';
+const localStorage = new LocalStorage('./scratch');
+
 
 const networkInterfaces = os.networkInterfaces ();
 
@@ -96,7 +97,9 @@ const state = {
   teamRepoHashMap: {},
   isCopySrc: true,
   astCache: {},
-  hashLength: 3
+  hashLength: 3,
+  renameCache: JSON.parse(localStorage.getItem('renameCache') ?? '{}'),
+  nameCollisions: new Set()
 };
 
 
@@ -132,12 +135,19 @@ function addIdToIdCache(scopeName, idObj) {
     const currObj = arr[currIndex];
 
     if (idObj.hash) {
-      const teamTag = idObj.hash.split('-')[0];
-      if (teamTag !== state.config.teamTag) overwrite = true;
-      else if (!currObj.hash || currObj.teamTag === state.config.teamTag)
+      if ((!currObj.hash && !currObj.team)|| state.preserveCollidingSuffixes)
         overwrite = true;
+      else 
+        state.nameCollisions.add (idObj.hash);
     }
 
+    if (idObj.team){
+      if(currObj.hash && !state.preserveCollidingSuffixes)
+        state.nameCollisions.add (currObj.hash);
+
+      if (!(currObj.hash && state.preserveCollidingSuffixes))
+        overwrite = true;
+    }
     if (currObj.filePath) overwrite = true;
 
     if (Object.keys(currObj).length === 1 && currObj.id) overwrite = true;
@@ -782,7 +792,14 @@ async function renameFile(file, content, to)
   await fs.promises.unlink (file);
 }
 
+function isSelectorTargetClass (selector, targetClass)
+{
+  if(!selector)
+    return false;
+  const spl = selector.split (',').map (sel => sel.trim());
 
+  return spl.find(sel => sel === targetClass) || spl.find(sel => sel.startsWith(`${targetClass}_`)) || spl.find(sel => sel.startsWith(`${targetClass}--`)) || spl.find (sel => sel.startsWith(`${targetClass}:`)) || spl.find (sel => sel.startsWith(`${targetClass} `));
+}
 
 export {
   state,
@@ -809,5 +826,6 @@ export {
   getHasClassNameRegex,
   serializeHtml,
   isGitError,
-  renameFile
+  renameFile,
+  isSelectorTargetClass
 };

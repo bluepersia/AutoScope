@@ -113,9 +113,10 @@ async function pull(devMd = false, isRetry = false) {
   try {
   devMode = devMd;
 
+  
   if (!(await main(isRetry))) return;
-
   await syncTeamRepo(state.config, (name && [name]) || [], null, 'merge');
+
 
   await fsExtra.remove('merge');
 
@@ -196,15 +197,9 @@ function parseCssScopeHashes(cssContent) {
     const hash = hashMatch[1].trim().split(' /*')[0];
 
     for (const m of classMatches) {
-      const className = m[0].slice(1);
-      const scopeName = className.replace(/-\w+$/, '');
-      const duplicate = results.find (h => h.hash === hash && h.scopeName === scopeName);
-
-      let isDuplicate;
-      if (duplicate)
-        isDuplicate = duplicate.isDuplicate = true;
+      //const className = m[0].slice(1);
       
-      results.push({ className, hash, scopeName, isDuplicate });
+      results.push({hash});
     }
   }
 
@@ -252,10 +247,8 @@ async function main(isRetry = false) {
   for (const cssFile of cssFiles) {
     const content = await readFileSafe(path.join(cwd, cssFile));
     const hashes = parseCssScopeHashes(content);
-    for(const h of hashes) h.filePath = cssFile;
     scopeHashes.push(...hashes);
   }
-
   await myGit.add('.');
   await teamGit.add('.');
   await myGit.commit('Save WIP before master backup');
@@ -339,7 +332,6 @@ async function main(isRetry = false) {
     for (const cssFile of cssFilesAfter) {
       const content = await readFileSafe(path.join(cwd, cssFile));
       const hashes = parseCssScopeHashes(content);
-      for(const h of hashes) h.filePath = cssFile;
       scopeHashesAfter.push(...hashes);
     }
 
@@ -348,24 +340,8 @@ async function main(isRetry = false) {
     return { afterHashArr, allFilesAfter };
   }
 
-  let after = await readFilesAfter();
+  //let after = await readFilesAfter();
 
-  const hashesAdded = after.afterHashArr.filter(
-    (h) => !scopeHashes.find((obj) => obj.hash === h.hash && obj.scopeName === h.scopeName)
-  );
-  const newNames = scopeHashes.filter (h => {
-    const sameHashes = after.afterHashArr.filter (obj => obj.hash === h.hash);
-    
-    return sameHashes.length <= 0 ? false : sameHashes.every (obj => obj.scopeName !== h.scopeName);
-  });
-  const hashesMoved = after.afterHashArr.filter(h => scopeHashes.find(obj => {
-    const found = h.hash === obj.hash && h.scopeName === obj.scopeName && obj.filePath !== h.filepath
-    if (found)
-      h.prevFilePath = objectMethod.filePath;
-
-    return found;
-  }));
-  const duplicates = after.afterHashArr.filter (h => h.isDuplicate);
   //await gitAdd (myGit, 'merge');
 
   //await myGit.commit('Save master before returning');
@@ -373,89 +349,27 @@ async function main(isRetry = false) {
   //await myGit.checkout(currentBranch.my);
   await teamGit.checkout(currentBranch.team);
 
-  
-  let myCssFiles;
+
+
+  const after = await readFilesAfter();
+  const hashesAdded = after.afterHashArr.filter(
+    (h) => !scopeHashes.find((obj) => obj.hash === h.hash)
+  );
 
   const collisionsOccured = [];
+  let myCssFiles;
 
-
-  if (hashesAdded.length > 0 || hashMoved.length > 0 || newNames.length > 0 || duplicates.length > 0) {
+  if (hashesAdded.length > 0) {
     myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     for (const cssFile of myCssFiles) {
       const css = await fs.readFile(cssFile, 'utf-8');
       const baseClass = path.basename (cssFile, '.css');
 
-
-      for(const newName of newNames)
-        {
-          if (
-            (css.includes(`--scope-hash:${newName.hash}`) ||
-            css.includes(`--scope-hash: ${newName.hash}`)) && newName.scopeName === baseClass
-          )
-            {
-              const { confirmRename } = await inquirer.prompt([
-                {
-                  type: 'input',
-                  name: 'confirmRename',
-                  message:
-                    `🧩 Name ${newName.scopeName} not found for hash ${newName.hash}. Has it been renamed or removed? Type 'rename <name>' to rename this file. Leave blank to proceed. Type 'q' to abort. `,
-                 
-                },
-              ]);
-        
-              if (confirmRename === 'q') {
-                throw Error ('Cancelled.')
-              } else if(confirmRename.startsWith ('rename '))
-              {
-                const name = confirmRename.split (' ')[1];
-                if(name)
-                  await renameFile (cssFile, css, name);
-              }
-            }
-        }
-  
-
-      for(const duplicate of duplicates)
-      {
-        if (
-          (css.includes(`--scope-hash:${duplicate.hash}`) ||
-          css.includes(`--scope-hash: ${duplicate.hash}`)) && baseClass === duplicate.scopeName
-        )
-          {
-            const err = new Error(`💥 Hash conflict (${cssFile})! Syncing cancelled to prevent fatal overwrites. Regenerate the hash and integrate.`);
-              err.stack = ''; 
-              throw err;
-          }
-      }
-
-      for (const hashMoved of hashesMoved)
-      {
-        if (
-          (css.includes(`--scope-hash:${hashMoved.hash}`) ||
-          css.includes(`--scope-hash: ${hashMoved.hash}`)) && hashMoved.scopeName === baseClass)
-          {
-            const { confirmMoved} = await inquirer.prompt([
-              {
-                type: 'confirm',
-                name: 'confirmMoved',
-                message:
-                  `🛰️ The class ${hashMoved.className} with hash ${hashMoved.hash} is now in ${hashMoved.filePath}, but was previously in ${hashMoved.prevFilePath}. Is this still your content?`,
-                default: false,
-              },
-            ]);
-      
-            if (!confirmMoved) {
-              throw Error ('Cancelled. Backup your content and retry.')
-            }
-          }
-      }
-
-      
       for (const hashAdded of hashesAdded) {
         if (
           (css.includes(`--scope-hash:${hashAdded.hash}`) ||
-          css.includes(`--scope-hash: ${hashAdded.hash}`)) && hashAdded.scopeName === path.basename (cssFile, '.css')
+          css.includes(`--scope-hash: ${hashAdded.hash}`)) 
         ) {
           collisionsOccured.push (cssFile);
         }
@@ -488,6 +402,7 @@ async function main(isRetry = false) {
   }
 
 
+
   try {
     await teamGit.mergeFromTo('master', currentBranch.team);
   } catch (e) {
@@ -510,12 +425,14 @@ async function main(isRetry = false) {
 
   await myGit.checkout (`${currentBranch.my}-snapshot`);
   state.config.outputDir = 'merge';
+  state.preserveCollidingSuffixes = true;
   await build(state.config, null, false, false);
   state.config.outputDir = state.config.initOutputDir;
+  state.preserveCollidingSuffixes = false;
   await gitAdd (myGit, 'merge');
   await myGit.commit('Commit snapshot build.');
   
-  after = await readFilesAfter();
+  
 
  // const beforeHashMap = new Map(scopeHashes.map((h) => [h.hash, h])); // map hash -> object
   const filesDeleted = allFilesBefore
@@ -542,9 +459,7 @@ async function main(isRetry = false) {
       return fsDefault.existsSync(filePath)
 });
 
-  const hashDeleted = scopeHashes
-    .filter(({hash, scopeName}) => !after.afterHashArr.find(f => f.hash === hash && f.scopeName === scopeName));
-
+  
   if (filesDeleted.length > 0) {
     console.log('\nThe following files no longer exist in the repo:\n');
     filesDeleted.forEach((file) => console.log('  -', file));
@@ -571,17 +486,45 @@ async function main(isRetry = false) {
     }
   }
 
+  await myGit.commit ('Commit any deleted content');
+  await myGit.checkout (currentBranch.my);
+  try {
+    await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
+  }catch(e)
+  {
+    if (e.message.includes('CONFLICTS')) {
+      // Get status to find conflicted files
+      const status = await myGit.status();
+      for (const file of status.conflicted) {
+        // Checkout 'theirs' version for conflicted file
+        await myGit.raw(['checkout', '--theirs', file]);
+        await myGit.add(file);
+      }
+      await myGit.commit('Auto-resolve merge conflicts by taking theirs');
+    } else {
+      throw e; // rethrow other errors
+    }
+  }
+  state.config.outputDir = 'merge';
+  await build(state.config, null, false, false);
+  state.config.outputDir = state.config.initOutputDir;
+  await gitAdd (myGit, 'merge');
+
+  
+  const hashDeleted = scopeHashes
+  .filter(({hash}) => !after.afterHashArr.find(f => f.hash === hash));
+
   if (hashDeleted.length > 0) {
-    if (!myCssFiles) myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
+    const myCssFiles = await globby(`${state.config.inputDir}/**/*.css`);
 
     const deletedFiles = [];
     
-    for (const { hash, scopeName } of hashDeleted) {
+    for (const { hash} of hashDeleted) {
       for (const srcPath of myCssFiles) {
         const content = await fs.readFile(srcPath, 'utf8');
         if (
           (content.includes(`--scope-hash: ${hash}`) ||
-          content.includes(`--scope-hash:${hash}`)) && path.basename (srcPath, '.css') === scopeName
+          content.includes(`--scope-hash:${hash}`))
         ) {
           deletedFiles.push(srcPath);
           break;
@@ -616,29 +559,6 @@ async function main(isRetry = false) {
       }
     }
   }
-  await myGit.commit ('Commit any deleted content');
-  await myGit.checkout (currentBranch.my);
-  try {
-    await myGit.mergeFromTo(`${currentBranch.my}-snapshot`, currentBranch.my);
-  }catch(e)
-  {
-    if (e.message.includes('CONFLICTS')) {
-      // Get status to find conflicted files
-      const status = await myGit.status();
-      for (const file of status.conflicted) {
-        // Checkout 'theirs' version for conflicted file
-        await myGit.raw(['checkout', '--theirs', file]);
-        await myGit.add(file);
-      }
-      await myGit.commit('Auto-resolve merge conflicts by taking theirs');
-    } else {
-      throw e; // rethrow other errors
-    }
-  }
-  state.config.outputDir = 'merge';
-  await build(state.config, null, false, false);
-  state.config.outputDir = state.config.initOutputDir;
-  await gitAdd (myGit, 'merge');
   await myGit.commit('Commit build.');
 
   await myGit.checkout(`${currentBranch.my}-snapshot`);

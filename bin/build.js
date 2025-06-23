@@ -13,7 +13,7 @@ import loadConfig from './loadConfig.js';
     config.copyJs = false;
 
   try {
-    
+
     await build( config ); // Wait here before continuing
     console.log('✅ Build complete');
 

@@ -11,7 +11,8 @@ import {
   getNumberSuffix,
   replaceLast,
   removeIdFromCache,
-  serializeHtml
+  serializeHtml,
+  isSelectorTargetClass
 } from '../shared.js';
 import { writeToAST, replaceLinkStylesheetsWithImports } from './react.js';
 import {writeToAST as writeToASTJs} from './jsParser.js';
@@ -174,7 +175,6 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     return filesWithTimes.map((file) => file.path);
   }
 
-  
   cssFiles = await sortFilesOldestFirst(cssFiles.filter (cssFile => !globalCssFiles.includes (cssFile)));
   const cssFilesObjs = await Promise.all(
     cssFiles.map(async (file) => {
@@ -188,18 +188,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       return obj;
     })
   );
-
   const filesFound = {};
-
   for (let { file, fileName, css, hasHash } of cssFilesObjs) {
 
-    try {
-      await lintCss (css, file);
-    }catch (err)
-    {
-
-      continue;
-    }
+   
     const isGlobal = globalCssFiles.includes(file);
 
     const relativePath = path.relative(inputDir, file);
@@ -212,6 +204,16 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       continue;
     }
 
+    if (state.config.devMode)
+      {
+        try {
+          await lintCss (css, file);
+        }catch (err)
+        {
+  
+          continue;
+        }
+      }
     //let css = await fs.promises.readFile(file, 'utf8');
 
     //const fileName = fileNames[index];
@@ -331,7 +333,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     let hashDecl;
     let delayedWrite = false;
     let rulesArr = [];
-    let selectorsObj;
+    let selectorsObj;  
     try 
     {
     result = await postcss([
@@ -424,7 +426,17 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         };
 
         if (resolveTag) console.log(`Resolved to ${selectorsObj.hashedName}`);
-
+        
+        const currNameState = this.renameCache[hash];
+        if(!currNameState)
+          state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
+        else if (selectorsObj.hashedName !== currNameState.to)
+        {
+          const rename = state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+          const isCollision = state.nameCollisions.has (hash);
+          if (isCollision)
+            console.log (`🧬 Duplicate detected! ${rename.from} has been renamed to ${rename.to}`);
+        }
         selectors[file] = selectorsObj;
 
         if (localConfig.writeRuntimeMap) {
@@ -479,8 +491,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               rule.selector.push(selector);
               return;
             }
-            if (!selector.startsWith(`.${fileName}`))
+            if (!selector.startsWith(`.${fileName}`) && !selector.includes ('__IGNORE'))
               selector = `.${fileName} ${selector}`;
+          
+
+            selector = selector.replace ('__IGNORE', '');
 
             function flatten(selector, flattenPseudo = true) {
               let chain = splitSelectorIntoSegments(selector, localConfig.flattenCombis);
@@ -577,7 +592,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     }
     rulesArr = rulesArr.map((r) => (r.name === 'media' ? r.clone() : r));
     let fileFound;
-    
+
     if (hashRead) {
       const mapObj = state.teamRepoHashMap[fileName + '/' + hashRead];
 
@@ -598,6 +613,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
         filesFound[file] = fileFound.filePath;
         let targetClass = null;
+        let prevClass = null;
         let insertIndex = null;
         let targetRule = null;
         // Step 1: Find the rule with the matching --scope-hash
@@ -616,17 +632,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         });
 
 
-        function isSelectorTargetClass (selector)
-        {
-          if(!selector)
-            return false;
-          return selector === targetClass || selector.startsWith(`${targetClass}_`) || selector.startsWith(`${targetClass}--`) || selector.startsWith(`${targetClass}:`) || selector.startsWith(`${targetClass} `);
-        }
+       
         // Step 2: Collect rules to remove
         const rulesToRemove = [];
         for (let i = insertIndex - 1; i >= 0; i--) {
           const rule = root.nodes[i];
-          if (isSelectorTargetClass(rule.selector)) rulesToRemove.push(rule);
+          if (isSelectorTargetClass(rule.selector, targetClass)) rulesToRemove.push(rule);
           else break;
         }
 
@@ -635,7 +646,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         for (let i = insertIndex + 1; i < root.nodes.length; i++) {
           const rule = root.nodes[i];
           if (rule.type === 'rule') {
-            if (isSelectorTargetClass(rule.selector))
+            if (isSelectorTargetClass(rule.selector, targetClass))
               rulesToRemove.push(rule);
             else break;
           } else if (rule.type === 'atrule') rulesToRemove.push(rule);
@@ -732,6 +743,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     if (delayedWrite) await fs.promises.writeFile(file, delayedWrite, 'utf-8');
   }
 
+  localStorage.setItem ('renameCache', JSON.stringify (state.renameCache));
+ 
   let mergedOutpath;
   if (config.mergeCss) {
     let mergedCss = Object.values(mergeCssMap).join('\n\n');
@@ -950,6 +963,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     htmlDoms = [];
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
+
   htmlDoms.forEach(async (dom, index) => {
     
     const htmlFilePath = dom.filePath;

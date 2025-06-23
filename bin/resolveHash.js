@@ -32,6 +32,7 @@ const hashOccurences = {};
 
 async function main ()
 {
+  /*
   await myGit.checkout ('master');
 
   try {
@@ -73,7 +74,7 @@ async function main ()
       if (!confirmMerge)
         throw Error ('Cancelled.');
     }
-
+*/
     const cssFiles = await globby (`${config.inputDir}/**/*.css`);
    
     for(const cssFile of cssFiles)
@@ -113,13 +114,15 @@ async function main ()
         config.outputDir = 'temp-hash-res';
         await build (config, null, false, true);
         await fsExtra.remove ('temp-hash-res');
+        /*
         await updateSnapshot ();
-        await updateDeps ();
+        await updateDeps ();*/
     }catch(err)
     {
+      /*
         await waitForHashGeneration ();
        await updateSnapshot ();
-       await updateDeps ();
+       await updateDeps ();*/
     }
 }
 

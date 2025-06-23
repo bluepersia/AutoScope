@@ -45,5 +45,4 @@ async function storeLocations ()
         }])
     }
 
-    const htmlFiles = await globby (`${config.teamGit`})
 }
