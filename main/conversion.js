@@ -27,6 +27,8 @@ import cloneDeep from 'lodash/cloneDeep.js'
 import stylelint from 'stylelint';
 import { fileURLToPath } from 'url';
 import { decl } from 'postcss';
+import { LocalStorage } from 'node-localstorage';
+const localStorage = new LocalStorage('./scratch');
 
 // Equivalent to __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -427,7 +429,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
         if (resolveTag) console.log(`Resolved to ${selectorsObj.hashedName}`);
         
-        const currNameState = this.renameCache[hash];
+        const currNameState = state.renameCache[hash];
         if(!currNameState)
           state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
         else if (selectorsObj.hashedName !== currNameState.to)

@@ -451,7 +451,7 @@ function copyFiles(inputDir, outputDir) {
     fs.mkdirSync(outputDir, { recursive: true });
     copyRecursive(inputDir, outputDir);
   } else {
-    console.log(`No supported files found in: ${inputDir}`);
+   // console.log(`No supported files found in: ${inputDir}`);
   }
 }
 function isRestFile(file) {
