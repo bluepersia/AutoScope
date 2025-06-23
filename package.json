@@ -1,6 +1,6 @@
 {
   "name": "auto-scope",
-  "version": "0.1.4.1",
+  "version": "0.1.5",
   "bin": {
     "team-sync": "./bin/syncTeamRepo.js",
     "build": "./bin/build.js",
