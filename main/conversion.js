@@ -223,7 +223,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
     //const fileName = fileNames[index];
 
-    let localConfig = (cssConfigs[fileName] = resolveConfigFor(
+    let localConfig = (cssConfigs[file] = resolveConfigFor(
       file,
       config,
       inputDir
@@ -853,6 +853,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               if (isScope)
               {
                 if (cls !== scope.name && !cls.startsWith (`${scope.name}`) && !cls.startsWith (`${scope.name}--`))
+                  if(!flatClasses.find (c => c.endsWith (`__${cls}`)))
                   retain = true;
               } else {
                 if (!flatClasses.includes (`${scope.hashedName}__${cls}`))
@@ -910,7 +911,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             } else {
               flatClasses.push(
                 ...classes
-                  .filter((cls) => cls !== scope.name)
+                  .filter((cls) => cls !== scope.name && !flatClasses.includes(`${prevScope.hashedName}__${cls}`))
                   .map((cls) =>
                     cls.startsWith (`${scope.name}--`) ? cls.replace (`${scope.name}--`, `${scope.hashedName}--`) :
                     (prevScope.name
@@ -1024,10 +1025,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             dom.children
           );
           
-          const localConfig = cssConfigs.hasOwnProperty(valueObj.scopeName)
-            ? cssConfigs[valueObj.scopeName]
+          const localConfig = cssConfigs.hasOwnProperty(filePath)
+            ? cssConfigs[filePath]
             : config;
 
+            
           for (const scopeNode of scopeNodes) {
             const dataScope = scopeNode.attribs['data-scope'];
      
