@@ -60,7 +60,7 @@ async function copyFile(srcPath) {
 
   await fsExtra.copy(
     srcPath,
-    `${state.config.outputDir}/${path.relative(
+    `${state.config.copyDir}/${path.relative(
       getOutermostDir(srcPath),
       srcPath
     )}`,
@@ -69,7 +69,7 @@ async function copyFile(srcPath) {
 }
 
 async function unlinkFile(srcPath) {
-  const p = `${state.config.outputDir}/${path.relative(
+  const p = `${state.config.copyDir}/${path.relative(
     getOutermostDir(srcPath),
     srcPath
   )}`;

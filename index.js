@@ -58,12 +58,16 @@ async function init(newConfig, runtimeMp, devMd = false) {
   initTeamSrc();
 
   state.config.initOutputDir = state.config.outputDir;
+  state.config.copyDir = state.config.outputDir;
   if (devMd) {
     
     state.config.outputDir =
       state.config.teamSrc?.length <= 1
         ? `dev-temp/${state.config.teamSrc[0]}`
         : 'dev-temp';
+    
+
+    state.config.copyDir = 'dev-temp';
   }
 
   if (state.devMode) {
@@ -854,7 +858,7 @@ async function build(
         force: true,
       });
 
-    await fs.promises.mkdir(state.config.outputDir);
+    await fs.promises.mkdir(state.config.outputDir, { recursive:true});
   }
  
   if (
@@ -863,16 +867,16 @@ async function build(
   ) {
     if (Array.isArray(state.config.copyFiles)) {
       state.config.copyFiles = state.config.copyFiles.filter(
-        (p) => p !== state.config.outputDir
+        (p) => p !== state.config.copyDir
       );
       for (const dir of state.config.copyFiles)
-        copyFiles(dir, state.config.outputDir);
+        copyFiles(dir, state.config.copyDir);
     } else {
-      if (state.config.copyFiles === state.config.outputDir) {
+      if (state.config.copyFiles === state.config.copyDir) {
         state.config.copyFiles = '';
         return;
       }
-      copyFiles(state.config.copyFiles, state.config.outputDir);
+      copyFiles(state.config.copyFiles, state.config.copyDir);
     }
   }
   

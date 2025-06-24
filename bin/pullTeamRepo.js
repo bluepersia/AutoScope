@@ -76,8 +76,7 @@ await initCombinatorFlattening(config);
 await initFormatters();
 initTeamSrc();
 state.config.initOutputDir = state.config.outputDir;
-
-state.config.initUsePrettier = state.config.usePrettier;
+state.config.copyFiles = false;
 
 checkDevMode(pull);
 
