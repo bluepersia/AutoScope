@@ -1,6 +1,6 @@
 import path from 'path';
 import crypto from 'crypto';
-import fs from 'fs';
+import fs, { realpath } from 'fs';
 import * as DomUtils from 'domutils';
 import multimatch from 'multimatch';
 import { Text } from 'domhandler';
@@ -114,11 +114,13 @@ async function setConfig(cfg) {
 }
 
 function resolveConfigFor(filePath, baseConfig, root) {
+ 
   let cfg = { ...baseConfig };
   for (const [pattern, override] of Object.entries(
-    baseConfig.overrideConfigs || {}
+    baseConfig.overrideConfig || {}
   )) {
     let realPattern = prefixGlobsWithDir(pattern, state.config.inputDir);
+    
     if (
       multimatch(
         `${state.config.inputDir}/${path.relative(root, filePath)}`,
@@ -392,12 +394,14 @@ function prefixGlobsWithDir(patterns, dir) {
       !cleanPattern.includes('/') &&
       !cleanPattern.includes('*') &&
       !cleanPattern.includes('?') &&
-      !cleanPattern.includes('[');
+      !cleanPattern.includes('[') &&
+      !cleanPattern.startsWith (`${dir}/`)
 
     // Convert to a glob pattern if it's just a filename
     const normalizedPattern = isPlainFilename
       ? path.posix.join(dir, '**', cleanPattern)
-      : path.posix.join(dir, cleanPattern);
+      : cleanPattern.startsWith('/') ? path.posix.join(dir, path.relative(dir, cleanPattern.slice(1)))
+      : path.posix.join(dir, path.relative(dir, cleanPattern));
 
     return isNegated ? '!' + normalizedPattern : normalizedPattern;
   });

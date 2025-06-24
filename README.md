@@ -193,6 +193,11 @@ In private mode, collisions can happen due to git not being synced up perfectly,
 When this happens, AutoScope will notify you about it, and that on next build, your suffix will be regenerated.
 I recommend building and committing this immediately with a clear message about rename.
 
+##### Other commands
+
+`npx add`
+`npx commit`
+
 #### 💡 Tip
 
 Your scoped content will automatically receive a scope hash variable generated. In the CSS, always keep a blank line between the hash and other properties. Hash changes later will be easier.
