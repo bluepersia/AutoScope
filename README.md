@@ -167,7 +167,7 @@ Set `teamGit` to the project repo, and `teamSrc` to the folder/s that contains t
 
 ##### 🚀 npx begin `<branch name>`
 
-Before you begin your work, call this command. **Important:** this will download the team repo content back to your src on a new branch.
+Before you begin your work, call this command. **Important:** this will download the team repo content back to your src on a new branch. _The download will be class-based (`.img`), not type-based (`img`)_
 
 ##### 🗂️ Where to Write Your Files
 
@@ -198,9 +198,24 @@ I recommend building and committing this immediately with a clear message about 
 `npx add`
 `npx commit`
 
-#### 💡 Tip
+#### 💡 Hashes required
 
-Your scoped content will automatically receive a scope hash variable generated. In the CSS, always keep a blank line between the hash and other properties. Hash changes later will be easier.
+In private mode, your scopes need a hash for sync identification. It's applied only to the scope itself.
+
+```css
+.recipe-card {
+  --scope-hash: xt2e34;
+}
+.recipe-card__title {
+  /*No hash*/
+}
+```
+
+```html
+<article class="recipe-card" data-scope-hash="xt2e34">
+  <h3 class="recipe-card__title">Chocolate Cake Recipe</h3>
+</article>
+```
 
 #### 📝 File copying
 
