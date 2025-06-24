@@ -160,7 +160,7 @@ In private mode, build regularly to commit significant changes. Your live edits 
 
 #### 🗂️ Organization
 
-Set up a repo for your private work, and inside it, add the repo of your team's project.
+Set up a Git repo for your private work, and inside it, add the Git repo of your team's project.
 Set `teamGit` to the project repo, and `teamSrc` to the folder/s that contains the source files of the project.
 
 #### 🔄 Workflow
