@@ -1,7 +1,6 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
 **This tool has been tested with small tests. It's now being tested on multi-page websites.**
-**Vite/Webpack will be supported, but currently untested.**
 **Thanks for your patience**
 
 _Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!_
