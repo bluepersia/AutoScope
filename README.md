@@ -1,6 +1,6 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
-**This tool has been tested with small tests. It's now being tested on multi-page websites.**
+**This tool has been tested with small tests. It's now being tested with realistic patterns.**
 **Vite/Webpack will be supported, but currently untested.**
 **Thanks for your patience**
 
