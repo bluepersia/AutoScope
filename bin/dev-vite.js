@@ -2,6 +2,7 @@
 
 import { promisify } from 'util';
 import { spawn } from 'child_process';
+import devPath from './devPath.js';
 
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -30,11 +31,11 @@ import concurrently from 'concurrently';
 
 async function main() {
   try {
-    await runCommand('npx', ['dev']);
+    await runCommand('npx', ['dev-init']);
 
     const { result} = concurrently(
       [
-        { command: 'npx dev --watch', name: 'auto-scope', prefixColor:'magenta' },
+        { command: 'npx dev', name: 'auto-scope', prefixColor:'magenta' },
         {
           command: `npx vite dev-temp --config ${
             config.teamGit

@@ -12,7 +12,8 @@
   "bin": {
     "team-sync": "./bin/syncTeamRepo.js",
     "build": "./bin/build.js",
-    "dev": "./bin/watch.js",
+    "dev": "./bin/dev.js",
+    "dev-init": "./bin/watch.js",
     "dev-scss": "./bin/dev-scss.js",
     "dev-webpack": "./bin/dev-webpack.js",
     "dev-saw": "./bin/dev-saw.js",
