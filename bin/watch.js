@@ -7,6 +7,8 @@ import { build } from '../index.js';
 import loadConfig from './loadConfig.js';
 import { state } from '../shared.js';
 
+
+
 import {
   onRemove,
   onChange,
@@ -79,7 +81,7 @@ if (noJS) config.copyJs = false;
 
 await build(config, runtimeMap, true);
 
-if (process.argv[1].endsWith('dev') || args.includes('--watch')) 
+if (args.includes('--watch')) 
 {
 
 config = state.config;

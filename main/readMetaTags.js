@@ -21,7 +21,7 @@ async function readMetaTags(
     const filePath = filePaths[index];
 
     const isReact = filePath.endsWith('.jsx') || filePath.endsWith('.tsx');
-    const isJs = filePath.endsWith ('.js');
+    const isJs = filePath.endsWith ('.js') || filePath.endsWith ('.ts');
 
     let ast;
     let dom;

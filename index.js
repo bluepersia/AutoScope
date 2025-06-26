@@ -316,7 +316,7 @@ function initFormatters() {
   if (ts && !Array.isArray(ts)) ts = [ts];
 
   state.tsFormatters = [];
-  state.tsFormatters = async (input) => {
+  state.tsFormatter = async (input) => {
     for (const formatter of state.tsFormatters) input = await formatter(input);
 
     return input;
