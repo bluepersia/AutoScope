@@ -155,6 +155,12 @@ Starts dev mode, which watches your files in `inputDir` in realtime. Uses a sand
 Build from `inputDir` to `outputDir`(or in private mode, to `teamSrc`)
 In private mode, build regularly to commit significant changes. Your live edits only affect the temporary dev folder in dev mode, not the actual team repo.
 
+#### ⚡ Vite
+
+Create a `vite` folder. Set your vite root to be this folder.
+Set `outputDir` to `vite`.
+use `npx dev-vite` and `npx build-vite`
+
 ### 🔒 Private Use (without team-wide adoption)
 
 #### 🗂️ Organization
