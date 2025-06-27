@@ -316,7 +316,7 @@ function initFormatters() {
   if (ts && !Array.isArray(ts)) ts = [ts];
 
   state.tsFormatters = [];
-  state.tsFormatters = async (input) => {
+  state.tsFormatter = async (input) => {
     for (const formatter of state.tsFormatters) input = await formatter(input);
 
     return input;
@@ -830,6 +830,18 @@ function getMachineTagId(length = 4) {
 
   return 'anon'; // Fallback if no MAC found
 }
+
+function isPathWithinOrSame(child, parent) {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  const relative = path.relative(resolvedParent, resolvedChild);
+
+  return (
+    relative === '' || 
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
 async function build(
   cfg = config,
   runtimeMap = null,
@@ -850,7 +862,7 @@ async function build(
     `${state.config.inputDir}/**/*.jsx`,
     `${state.config.inputDir}/**/*.tsx`,
   ]);  
-  
+
   if (overwrite && (!state.config.teamGit || (state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir))) {
     if (fs.existsSync(state.config.outputDir))
       await fs.promises.rm(state.config.outputDir, {
@@ -860,22 +872,18 @@ async function build(
 
     await fs.promises.mkdir(state.config.outputDir, { recursive:true});
   }
- 
+
   if (
-    state.config.copyFiles &&
-    (!state.config.teamGit || state.config.devMode)
+    state.config.copyFiles
   ) {
     if (Array.isArray(state.config.copyFiles)) {
       state.config.copyFiles = state.config.copyFiles.filter(
-        (p) => p !== state.config.copyDir
+        (p) => !isPathWithinOrSame (state.config.copyDir, p)
       );
       for (const dir of state.config.copyFiles)
         copyFiles(dir, state.config.copyDir);
     } else {
-      if (state.config.copyFiles === state.config.copyDir) {
-        state.config.copyFiles = '';
-        return;
-      }
+      if (!isPathWithinOrSame (state.config.copyDir, state.config.copyFiles)) 
       copyFiles(state.config.copyFiles, state.config.copyDir);
     }
   }

@@ -569,6 +569,97 @@ function warnRename (hash)
     }
     return className;
   }
+
+  function processNode (node, isParent = true, context)
+      {
+        const {klass, baseClass, baseClassCount, localConfig} = context;
+
+        if (node.attribs?.id && node.attribs.id.startsWith (`${klass}__`))
+            node.attribs.id = node.attribs.id.split ('__').at (-1);
+        
+          if (node.attribs?.for && node.attribs.for.startsWith (`${klass}__`))
+            node.attribs.for = node.attribs.for.split ('__').at (-1);
+
+        if (!node.attribs?.class)
+        {
+          if(node.children)
+          node.children.forEach (node => processNode (node, false));
+          return;
+        }
+        const classTokens = node.attribs.class.split(/\s+/);
+
+        let isNewScope = false;
+
+
+        if (!isParent && node.attribs['data-scope-hash'])
+          isNewScope = true;
+
+
+        if (classTokens.includes (klass) && !isParent)
+          isNewScope = true;
+
+        /*
+        if(node.attribs['data-scope-hash'])
+          inBreak = false;
+
+        const notKlassArr = classTokens.filter (cls => cls !== klass && !cls.startsWith (`${klass}_`) && !cls.startsWith (`${klass}--`))
+        
+        if(notKlassArr.length > 0 && !inBreak)
+        {
+          if(node.children?.some (child => child.attribs?.class.split (/\s+/).every (cls => !cls.startsWith (`${klass}_`))))
+          {
+            node.attribs['data-break'] = notKlassArr.length === classTokens.length ? '' : notKlassArr.join (' ');
+            inBreak = true;
+          }
+          else 
+          {
+            node.attribs['data-exclude'] = notKlassArr.length === classTokens.length ? '' : notKlassArr.join (' ');
+          }
+        }*/
+        
+
+        let updated = false;
+        let exactMatch = false;
+        const newTokens = classTokens.map((token) => {
+       
+          if (token === klass) {
+            if (isNewScope)
+              return token;
+            
+              exactMatch = true;
+              updated = true;
+              return baseClass;
+          } else if (token.startsWith(`${klass}_`) || (!isNewScope && token.startsWith (`${klass}--`))) {
+            
+            updated = true;
+            let replaced = token.replace(`${klass}_`, `${baseClass}_`).replace (`${klass}--`, `${baseClass}--`);
+            if (!localConfig.dontFlatten) {
+              replaced = unflattenHtmlClass(replaced, localConfig);
+              replaced = getLastClassPiece(replaced);
+            }
+            return replaced;
+          }
+          return token;
+        });
+
+        if (updated) {
+          node.attribs.class = Array.from (new Set (newTokens)).join(' ');
+        }
+
+        if (exactMatch) {
+          if(baseClassCount > 1)
+            node.attribs['data-scope'] = String(baseClassCount);
+
+          context.foundExact = true;
+        }
+
+       if (isNewScope)
+        return;
+        
+        if(node.children)
+        node.children.forEach (child => processNode (child,false, context));
+      }
+
   async function readAndWriteDom(dom) {
     const usedScopes = [];
 
@@ -706,99 +797,15 @@ function warnRename (hash)
         baseClassCount = baseClassMap[baseClass];
       }
 
-      function processNode (node, isParent = true)
-      {
-        if (node.attribs?.id && node.attribs.id.startsWith (`${klass}__`))
-            node.attribs.id = node.attribs.id.split ('__').at (-1);
-        
-          if (node.attribs?.for && node.attribs.for.startsWith (`${klass}__`))
-            node.attribs.for = node.attribs.for.split ('__').at (-1);
-
-        if (!node.attribs?.class)
-        {
-          if(node.children)
-          node.children.forEach (node => processNode (node, false));
-          return;
-        }
-        const classTokens = node.attribs.class.split(/\s+/);
-
-        let isNewScope = false;
-
-
-        if (!isParent && node.attribs['data-scope-hash'])
-          isNewScope = true;
-
-
-        if (classTokens.includes (klass) && !isParent)
-          isNewScope = true;
-
-        /*
-        if(node.attribs['data-scope-hash'])
-          inBreak = false;
-
-        const notKlassArr = classTokens.filter (cls => cls !== klass && !cls.startsWith (`${klass}_`) && !cls.startsWith (`${klass}--`))
-        
-        if(notKlassArr.length > 0 && !inBreak)
-        {
-          if(node.children?.some (child => child.attribs?.class.split (/\s+/).every (cls => !cls.startsWith (`${klass}_`))))
-          {
-            node.attribs['data-break'] = notKlassArr.length === classTokens.length ? '' : notKlassArr.join (' ');
-            inBreak = true;
-          }
-          else 
-          {
-            node.attribs['data-exclude'] = notKlassArr.length === classTokens.length ? '' : notKlassArr.join (' ');
-          }
-        }*/
-        
-
-        let updated = false;
-        let exactMatch = false;
-        const newTokens = classTokens.map((token) => {
-       
-          if (token === klass) {
-            if (isNewScope)
-              return token;
-            
-              exactMatch = true;
-              updated = true;
-              return baseClass;
-          } else if (token.startsWith(`${klass}_`) || (!isNewScope && token.startsWith (`${klass}--`))) {
-            
-            updated = true;
-            let replaced = token.replace(`${klass}_`, `${baseClass}_`).replace (`${klass}--`, `${baseClass}--`);
-            if (!localConfig.dontFlatten) {
-              replaced = unflattenHtmlClass(replaced, localConfig);
-              replaced = getLastClassPiece(replaced);
-            }
-            return replaced;
-          }
-          return token;
-        });
-
-        if (updated) {
-          node.attribs.class = Array.from (new Set (newTokens)).join(' ');
-        }
-
-        if (exactMatch) {
-          if(baseClassCount > 1)
-            node.attribs['data-scope'] = String(baseClassCount);
-
-          foundExact = true;
-        }
-
-       if (isNewScope)
-        return;
-        
-        if(node.children)
-        node.children.forEach (child => processNode (child,false));
-      }
+      const contextObj = {klass, baseClass, baseClassCount, foundExact, localConfig};
       nodes.forEach((node) => {
         
-        processNode (node, node.attribs['data-scope-hash']);
+        processNode (node, node.attribs['data-scope-hash'], contextObj);
 
         delete node.attribs['data-scope-hash'];
       });
+
+      foundExact = contextObj.foundExact;
 
       if (foundExact) {
         usedScopes.push({

@@ -21,7 +21,7 @@ async function readMetaTags(
     const filePath = filePaths[index];
 
     const isReact = filePath.endsWith('.jsx') || filePath.endsWith('.tsx');
-    const isJs = filePath.endsWith ('.js');
+    const isJs = filePath.endsWith ('.js') || filePath.endsWith ('.ts');
 
     let ast;
     let dom;
@@ -74,18 +74,7 @@ async function readMetaTags(
     const domObj = dom || js || ast;
 
 
-    async function getCssFilesInSameDir(filePath) {
-      // Get the directory of the given file
-      const dir = path.dirname(filePath);
-
-      // Build the glob pattern for all .css files in that directory
-      const pattern = path.join(dir, '*.css');
-
-      // Use globby to find all matching files
-      const cssFiles = await globby(pattern);
-
-      return cssFiles.filter (file => !file.includes ('.exclude.'));
-    }
+    
 
 
     let thisMetaTags = [];
@@ -188,6 +177,20 @@ function getAllScopeMetaTags(node, filePath, result = []) {
   }
 
   return result;
+}
+
+
+async function getCssFilesInSameDir(filePath) {
+  // Get the directory of the given file
+  const dir = path.dirname(filePath);
+
+  // Build the glob pattern for all .css files in that directory
+  const pattern = path.join(dir, '*.css');
+
+  // Use globby to find all matching files
+  const cssFiles = await globby(pattern);
+
+  return cssFiles.filter (file => !file.includes ('.exclude.'));
 }
 
 export { readMetaTags };

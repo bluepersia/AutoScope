@@ -201,6 +201,194 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   }
 
   const filesFound = {};
+
+  function attachHash(root, scopeName, hash, localConfig) {
+    const selector = `.${scopeName}`;
+    let rule = root.nodes.find(
+      (node) => node.type === 'rule' && node.selector === selector
+    );
+    if (!rule) {
+      rule = postcss.rule({ selector });
+      root.append(rule);
+    }
+    // remove existing and add new --scope-hash
+    let already;
+    rule.walkDecls('--scope-hash', (d) => { 
+    already = d
+  
+    });
+
+      if (already)
+      {
+        already.value = hash;
+        return;
+      }
+
+    const newDecl = postcss.decl({
+      prop: '--scope-hash',
+      value: hash,
+    });
+
+    newDecl.raws.semicolon = true;
+   // const dummy = postcss.comment({ text: 'DUMMY' });
+    //dummy.raws.before = '\n';
+    //rule.prepend(dummy);
+
+    if (localConfig.teamSrc) {
+      newDecl.raws.value = {
+        raw: `${hash}; /* Collision-prevention ID */`,
+        value: hash, // must match actual value for parsing consistency
+      };
+    }
+    // Append it to the rule
+    rule.prepend(newDecl);
+    function getPreviousDecl(decl) {
+      const parent = decl.parent;
+      if (!parent || !Array.isArray(parent.nodes)) return null;
+    
+      const index = parent.nodes.indexOf(decl);
+      return index > 0 ? parent.nodes[index - 1] : null;
+    }
+    
+    newDecl.raws.before = '\n  ';
+    /*
+    const next = dummy.next();
+
+    if (next && typeof next.raws.before === 'string') {
+      const match = next.raws.before.match(/(\n*)([ \t]*)$/);
+
+      const indent = match ? match[2] : '';
+      next.raws.before = '\n' + indent;
+    }*/
+  }
+
+  function findHash(root) {
+    let value;
+
+    root.walkRules((rule) => {
+      rule.walkDecls((decl) => {
+        if (decl.prop === '--scope-hash') {
+          value = decl.value.split(' ')[0].trim();
+          return false; // stop walkDecls
+        }
+      });
+      if (value) return false; // stop walkRules
+    });
+
+    return value;
+  }
+
+  function findResolveTag(root) {
+    let value;
+
+    root.walkRules((rule) => {
+
+
+      rule.walkDecls((decl) => {
+        if (decl.prop === '--resolve-collision') {
+          decl.raws.before = '';
+          decl.raws.after = '';
+          decl.remove();
+          value = true;
+          return false; // stop walkDecls
+        }
+      });
+      if (value) return false; // stop walkRules
+    });
+
+    return value;
+  }
+
+  function processSelector(rule, selector, context) {
+    const {fileName, localConfig, selectorsObj} = context;
+    if (
+      selector.includes(':root') ||
+      selector.startsWith('body') ||
+      selector.startsWith('html')
+    ) {
+      rule.selector.push(selector);
+      return;
+    }
+    if (!selector.startsWith(`.${fileName}`) && !selector.includes ('__IGNORE'))
+      selector = `.${fileName} ${selector}`;
+  
+
+    selector = selector.replace ('__IGNORE', '');
+
+    function flatten(selector, flattenPseudo = true) {
+      let chain = splitSelectorIntoSegments(selector, localConfig.flattenCombis);
+      
+      if (chain.length <= 1)
+      {
+        
+        return replaceDotsExceptFirst(replaceCombinators (replaceDoubleUnderscoreInString(
+          
+            selector.replace(`.${fileName}`, `.${selectorsObj.hashedName}`)
+          
+        ), localConfig.flattenCombis));
+      }
+      //chain = chain.map((seg) => replaceDotsExceptFirst(seg));
+        
+      let flatChain = replaceDoubleUnderscoreInArray(
+        chain.map((seg, index) => {
+            seg =
+              index === 0
+                ? seg.replace(
+                    `.${fileName}`,
+                    `.${selectorsObj.hashedName}`
+                  )
+                : prefixSelectorSegment (seg, selectorsObj);
+          return stripSpaces(
+            seg)
+        }));
+
+
+      chain = chain.map((seg) => stripPseudoSelectors (seg.replace (`.${fileName} `, '')));
+      
+      flatChain = flatChain.map (seg => replaceDotsExceptFirst (replaceCombinators (seg, localConfig.flattenCombis), ''))
+
+      const flat = flatChain.join (' ');
+
+      if (chain[0] === `.${fileName}`)
+        {
+          chain = chain.slice (1);
+          flatChain = flatChain.slice (1);
+        }
+      return {
+        flat,
+        chain,
+        flatChain: flatChain.map (seg  =>
+          stripPseudoSelectors (seg.replaceAll('.', '').replace(/([>+~*|])(\s*)/g, '')))
+      };
+    }
+
+    const selectorObj = { raw: selector };
+    let flat;
+
+    if (!localConfig.dontFlatten) {
+      let fullFlattened = flatten(selector);
+      if (typeof fullFlattened === 'object') {
+        flat = fullFlattened.flat;
+        selectorObj.flat = fullFlattened;
+        delete fullFlattened.flat;
+      } else {
+        flat = fullFlattened;
+        selectorObj.flat = removeCombinators(
+          stripPseudoSelectors(fullFlattened)
+        );
+      }
+    } else {
+      flat = selector.replaceAll(
+        `.${fileName}`,
+        `.${selectorsObj.hashedName}`
+      );
+    }
+
+    selectorsObj.selectors.push(selectorObj);
+
+    rule.selector.push(flat);
+  }
+
   for (let { file, fileName, css, hasHash } of cssFilesObjs) {
 
    
@@ -245,65 +433,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
     let hash;
 
-    function attachHash(root, scopeName, hash) {
-      const selector = `.${scopeName}`;
-      let rule = root.nodes.find(
-        (node) => node.type === 'rule' && node.selector === selector
-      );
-      if (!rule) {
-        rule = postcss.rule({ selector });
-        root.append(rule);
-      }
-      // remove existing and add new --scope-hash
-      let already;
-      rule.walkDecls('--scope-hash', (d) => { 
-      already = d
     
-      });
-
-        if (already)
-        {
-          already.value = hash;
-          return;
-        }
-
-      const newDecl = postcss.decl({
-        prop: '--scope-hash',
-        value: hash,
-      });
-
-      newDecl.raws.semicolon = true;
-     // const dummy = postcss.comment({ text: 'DUMMY' });
-      //dummy.raws.before = '\n';
-      //rule.prepend(dummy);
-
-      if (localConfig.teamSrc) {
-        newDecl.raws.value = {
-          raw: `${hash}; /* Collision-prevention ID */`,
-          value: hash, // must match actual value for parsing consistency
-        };
-      }
-      // Append it to the rule
-      rule.prepend(newDecl);
-      function getPreviousDecl(decl) {
-        const parent = decl.parent;
-        if (!parent || !Array.isArray(parent.nodes)) return null;
-      
-        const index = parent.nodes.indexOf(decl);
-        return index > 0 ? parent.nodes[index - 1] : null;
-      }
-      
-      newDecl.raws.before = '\n  ';
-      /*
-      const next = dummy.next();
-
-      if (next && typeof next.raws.before === 'string') {
-        const match = next.raws.before.match(/(\n*)([ \t]*)$/);
-
-        const indent = match ? match[2] : '';
-        next.raws.before = '\n' + indent;
-      }*/
-    }
 
     //if (!scopeHashsMap.hasOwnProperty(fileName))
     //   scopeHashsMap[fileName] = new Set();
@@ -318,7 +448,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         try {
           result = await postcss([
             (root) => {
-              attachHash(root, fileName, hash);
+              attachHash(root, fileName, hash, localConfig);
             },
           ]).process(css, { from: undefined });
         } catch (err) {
@@ -336,7 +466,6 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
     let result;
     let hashRead;
-    let hashDecl;
     let delayedWrite = false;
     let rulesArr = [];
     let selectorsObj;  
@@ -344,53 +473,17 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     {
     result = await postcss([
       async (root) => {
-        function findHash() {
-          let value;
-
-          root.walkRules((rule) => {
-            rule.walkDecls((decl) => {
-              if (decl.prop === '--scope-hash') {
-                value = decl.value.split(' ')[0].trim();
-                hashDecl = decl;
-                return false; // stop walkDecls
-              }
-            });
-            if (value) return false; // stop walkRules
-          });
-
-          return value;
-        }
-
-        function findResolveTag() {
-          let value;
-
-          root.walkRules((rule) => {
-
-
-            rule.walkDecls((decl) => {
-              if (decl.prop === '--resolve-collision') {
-                decl.raws.before = '';
-                decl.raws.after = '';
-                decl.remove();
-                value = true;
-                return false; // stop walkDecls
-              }
-            });
-            if (value) return false; // stop walkRules
-          });
-
-          return value;
-        }
+        
 
         let suffixOverride = false;
         let resolveTag;
         if (hash === 'READ') {
-          hashRead = findHash();
+          hashRead = findHash(root);
           
           const idWithHash = findIdFromCache(fileName, { hash: hashRead });
 
           hash = hashRead;
-          resolveTag = findResolveTag();
+          resolveTag = findResolveTag(root);
 
           if (idWithHash) {
             if (!resolveTag) {
@@ -407,7 +500,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             
             hash = generateCssModuleHash(fileName, 1);
 
-            attachHash(root, fileName, hash);
+            attachHash(root, fileName, hash, localConfig);
             const out = removeDummyComment (await state.cssFormatter(root.toString()));
             if (state.config.devMode) delayedWrite = out;
             else await fs.promises.writeFile(file, out, 'utf-8');
@@ -500,98 +593,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           }else if ((rule.type !== 'rule' || rule.parent?.type === 'atrule') && rule.parent.name !== 'media')
             return;
 
-          function processSelector(rule, selector) {
-            if (
-              selector.includes(':root') ||
-              selector.startsWith('body') ||
-              selector.startsWith('html')
-            ) {
-              rule.selector.push(selector);
-              return;
-            }
-            if (!selector.startsWith(`.${fileName}`) && !selector.includes ('__IGNORE'))
-              selector = `.${fileName} ${selector}`;
           
-
-            selector = selector.replace ('__IGNORE', '');
-
-            function flatten(selector, flattenPseudo = true) {
-              let chain = splitSelectorIntoSegments(selector, localConfig.flattenCombis);
-              
-              if (chain.length <= 1)
-              {
-                
-                return replaceDotsExceptFirst(replaceCombinators (replaceDoubleUnderscoreInString(
-                  
-                    selector.replace(`.${fileName}`, `.${selectorsObj.hashedName}`)
-                  
-                ), localConfig.flattenCombis));
-              }
-              //chain = chain.map((seg) => replaceDotsExceptFirst(seg));
-                
-              let flatChain = replaceDoubleUnderscoreInArray(
-                chain.map((seg, index) => {
-                    seg =
-                      index === 0
-                        ? seg.replace(
-                            `.${fileName}`,
-                            `.${selectorsObj.hashedName}`
-                          )
-                        : prefixSelectorSegment (seg, selectorsObj);
-                  return stripSpaces(
-                    seg)
-                }));
-
-
-              chain = chain.map((seg) => stripPseudoSelectors (seg.replace (`.${fileName} `, '')));
-              
-              flatChain = flatChain.map (seg => replaceDotsExceptFirst (replaceCombinators (seg, localConfig.flattenCombis), ''))
-
-              const flat = flatChain.join (' ');
-
-              if (chain[0] === `.${fileName}`)
-                {
-                  chain = chain.slice (1);
-                  flatChain = flatChain.slice (1);
-                }
-              return {
-                flat,
-                chain,
-                flatChain: flatChain.map (seg  =>
-                  stripPseudoSelectors (seg.replaceAll('.', '').replace(/([>+~*|])(\s*)/g, '')))
-              };
-            }
-
-            const selectorObj = { raw: selector };
-            let flat;
-
-            if (!localConfig.dontFlatten) {
-              let fullFlattened = flatten(selector);
-              if (typeof fullFlattened === 'object') {
-                flat = fullFlattened.flat;
-                selectorObj.flat = fullFlattened;
-                delete fullFlattened.flat;
-              } else {
-                flat = fullFlattened;
-                selectorObj.flat = removeCombinators(
-                  stripPseudoSelectors(fullFlattened)
-                );
-              }
-            } else {
-              flat = selector.replaceAll(
-                `.${fileName}`,
-                `.${selectorsObj.hashedName}`
-              );
-            }
-
-            selectorsObj.selectors.push(selectorObj);
-
-            rule.selector.push(flat);
-          }
-
           const selector = rule.selector;
           rule.selector = [];
-          splitSelectors(selector).forEach((s) => processSelector(rule, s));
+          splitSelectors(selector).forEach((s) => processSelector(rule, s, { fileName, localConfig, selectorsObj}));
 
           rule.selector = rule.selector.join(', ');
 
@@ -853,10 +858,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               if (isScope)
               {
                 if (cls !== scope.name && !cls.startsWith (`${scope.name}`) && !cls.startsWith (`${scope.name}--`))
-                  if(!flatClasses.find (c => c.endsWith (`__${cls}`)))
+                  if(!flatClasses.find (c => c.endsWith (`_${cls}`)))
                   retain = true;
               } else {
-                if (!flatClasses.includes (`${scope.hashedName}__${cls}`))
+                if (!flatClasses.find (c => c.endsWith (`_${cls}`)))
                   retain = true;
               }
               if (retain)
@@ -962,6 +967,67 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     });
   }
 
+
+  // helper to test ancestry
+  const isDescendantOf = (node, parents, scopeNode) => {
+    while (node.parent && node.parent !== scopeNode) {
+      if (parents.includes(node.parent)) return true;
+      node = node.parent;
+    }
+    return false;
+  };
+  function selectSeg (index, node, context, selectAllContext)
+  {
+    const {chain, flatChain} = context;
+
+    if (index >= chain.length)
+      return;
+    
+    selectAll (node, `:scope ${chain[index]}`, match => 
+    {
+      if(!match.attribs.flatClasses)
+        match.attribs.flatClasses = [];
+
+     
+      if (flatChain[index])
+      match.attribs.flatClasses.push (flatChain[index]);
+      selectSeg (index + 1, match, { chain, flatChain }, selectAllContext)
+    }
+    , selectAllContext)
+  }
+
+  function onSelect (match, flat)
+  {
+
+    function removeFirstDot(str) {
+      return str.startsWith('.') ? str.slice(1) : str;
+    }
+
+    function getAfterDot(str) {
+      return str.includes('.') ? str.split('.')[1] : str;
+    }
+
+    if (!match.attribs.flatClasses)
+      match.attribs.flatClasses = [];
+    match.attribs.flatClasses.push(
+      getAfterDot(removeFirstDot(flat))
+    );
+  }
+
+  function selectAll (nodes, selector, cb, context)
+  {
+    const {isObj, raw, valueObj, scopeNode, nestedScopeNodes} = context;
+    const isScopeSel = (!isObj) && ( raw === `.${valueObj.scopeName}` || raw.startsWith(`.${valueObj.scopeName}.`) || raw.startsWith (`.${valueObj.scopeName}--`) || raw.startsWith (`.${valueObj.scopeName}:`));
+    const matches = cssSelect
+      .selectAll(selector, nodes)
+      .filter((node) => 
+        (!isScopeSel || node === scopeNode) && 
+      !isDescendantOf(node, nestedScopeNodes, scopeNode));
+
+    matches.forEach((match) => {
+      cb (match);
+      })
+  }
   const selectorEntries = Object.entries(selectors);
 
   function getRelativePathForLink(inputPath, rootFilePath) {
@@ -1046,6 +1112,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               const flatClasses = (scopeNode.attribs.flatClasses =
                 scopeNode.attribs.flatClasses || []);
 
+              const modCls = scopeNode.attribs.class?.split (' ').find (cls => cls.startsWith (`${valueObj.scopeName}--`));
+             
+              if (modCls)
+                flatClasses.unshift (modCls.replace (`${valueObj.scopeName}--`, `${valueObj.hashedName}--`));
+
               flatClasses.unshift(`${valueObj.hashedName}`);
             
               if (state.config.teamGit)
@@ -1074,15 +1145,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
                     )
                 : [];
 
-              // helper to test ancestry
-              const isDescendantOf = (node, parents) => {
-                while (node.parent && node.parent !== scopeNode) {
-                  if (parents.includes(node.parent)) return true;
-                  node = node.parent;
-                }
-                return false;
-              };
-
+              
               for (const { raw, flat } of valueObj.selectors) {
 
                 let isObj = typeof flat === 'object';
@@ -1091,59 +1154,19 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
                   
                   const chain = flat.chain;
                   const flatChain = flat.flatChain;
-                  selectSeg (0, scopeNode);
-                  function selectSeg (index, node)
-                  {
-                    if (index >= chain.length)
-                      return;
-                    
-                    selectAll (node, `:scope ${chain[index]}`, match => 
-                    {
-                      if(!match.attribs.flatClasses)
-                        match.attribs.flatClasses = [];
-
-                     
-                      if (flatChain[index])
-                      match.attribs.flatClasses.push (flatChain[index]);
-                      selectSeg (index + 1, match)
-                    }
-                    )
-                  }
+                  selectSeg (0, scopeNode, { chain, flatChain}, {isObj, raw, valueObj, scopeNode, nestedScopeNodes});
                 }
                 else 
                 {
-                  function cb (match)
-                  {
-
-                    function removeFirstDot(str) {
-                      return str.startsWith('.') ? str.slice(1) : str;
-                    }
-
-                    function getAfterDot(str) {
-                      return str.includes('.') ? str.split('.')[1] : str;
-                    }
-
-                    if (!match.attribs.flatClasses)
-                      match.attribs.flatClasses = [];
-                    match.attribs.flatClasses.push(
-                      getAfterDot(removeFirstDot(flat))
-                    );
-                  }
-                  selectAll ([scopeNode], stripPseudoSelectors (raw), cb);
+                  selectAll ([scopeNode], stripPseudoSelectors (raw), match => onSelect (match, flat), {
+                    isObj,
+                    raw,
+                    valueObj,
+                    scopeNode,
+                    nestedScopeNodes
+                  });
                 }
-                function selectAll (nodes, selector, cb)
-                {
-                  const isScopeSel = (!isObj) && ( raw === `.${valueObj.scopeName}` || raw.startsWith(`.${valueObj.scopeName}.`) || raw.startsWith (`.${valueObj.scopeName}--`) || raw.startsWith (`.${valueObj.scopeName}:`));
-                  const matches = cssSelect
-                    .selectAll(selector, nodes)
-                    .filter((node) => 
-                      (!isScopeSel || node === scopeNode) && 
-                    !isDescendantOf(node, nestedScopeNodes));
-  
-                  matches.forEach((match) => {
-                    cb (match);
-                    })
-                }
+                
                 
               }
             }

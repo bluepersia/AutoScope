@@ -1,35 +1,58 @@
 #!/usr/bin/env node
 
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
+import devPath from './devPath.js';
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, { stdio: 'inherit', ...options });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Process exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+import {state} from '../shared.js';
 
 import loadConfig from './loadConfig.js';
 const config = (state.config = await loadConfig());
 
 import concurrently from 'concurrently';
 
-const run = promisify(exec);
-
 async function main() {
   try {
-    await run('npx dev');
+    await runCommand('npx', ['dev-init']);
 
-    await concurrently(
+    const { result} = concurrently(
       [
-        { command: 'npx dev --watch', name: 'auto-scope' },
+        { command: 'npx dev', name: 'auto-scope', prefixColor:'magenta' },
         {
-          command: `npx vite --root dev-temp --config ${
+          command: `npx vite dev-temp --config ${
             config.teamGit
               ? `${config.teamGit}/${config.viteConfig || 'vite.config.js'}`
               : 'vite.config.js'
           }`,
+          name:'vite',
+          prefixColor: 'cyan'
         },
       ],
       {
         prefix: 'name',
-        killOthers: ['failure', 'success'],
+        killOthersOn: ['failure', 'success'],
       }
-    )
+    );
+
+    result
       .then(() => {
         console.log('All processes exited');
       })

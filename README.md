@@ -1,7 +1,6 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
 **This tool has been tested with small tests. It's now being tested on realistic patterns.**
-**Vite/Webpack will be supported, but currently untested.**
 **Thanks for your patience**
 
 _Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!_
@@ -155,6 +154,12 @@ Starts dev mode, which watches your files in `inputDir` in realtime. Uses a sand
 
 Build from `inputDir` to `outputDir`(or in private mode, to `teamSrc`)
 In private mode, build regularly to commit significant changes. Your live edits only affect the temporary dev folder in dev mode, not the actual team repo.
+
+#### ⚡ Vite
+
+Create a `vite` folder. Set your vite root to be this folder.
+Set `outputDir` to `vite`.
+use `npx dev-vite` and `npx build-vite`
 
 ### 🔒 Private Use (without team-wide adoption)
 
