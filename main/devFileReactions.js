@@ -5,6 +5,7 @@ import {
   findHtmlDeps,
   isRestFile,
   removeIdFromCache,
+  findCssDeps
 } from '../shared.js';
 import { writeCssAndHtml, readGlobalCss } from './conversion.js';
 import fs from 'fs';
@@ -47,9 +48,12 @@ async function onChange(filePaths) {
   const htmlDeps = findHtmlDeps(cssFiles);
   const reactDeps = findHtmlDeps(cssFiles, 'ast');
   const jsDeps = findHtmlDeps (cssFiles, 'js');
+  
+  const domCssDeps = [...htmlDeps.map (dom => findCssDeps (dom)).flat(), ...reactDeps.map(dom => findCssDeps (dom)).flat(), ...jsDeps.map (dom => findCssDeps (dom)).flat()];
+
 
   await writeCssAndHtml(
-    Array.from(new Set([...cssFiles, ...cssDeps])),
+    Array.from(new Set([...cssFiles, ...cssDeps, ...domCssDeps])),
     Array.from(new Set([...findDomsInCache(htmlFiles), ...htmlDeps])),
     Array.from(new Set([...findDomsInCache(reactFiles), ...reactDeps])),
     Array.from (new Set([...findDomsInCache(jsFiles), ...jsDeps]))

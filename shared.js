@@ -420,7 +420,19 @@ function findHtmlDeps(cssFiles, type = 'html') {
     }
   }
 
-  return htmlDeps;
+  return [...htmlDeps];
+}
+
+function findCssDeps (dom)
+{
+  const deps = [];
+  for(const [cssFile, domArr] of Object.entries (state.metaCache))
+  {
+    if(domArr.includes (dom))
+      deps.push (cssFile);
+  }
+
+  return deps;
 }
 
 function copyFiles(inputDir, outputDir) {
@@ -1080,5 +1092,6 @@ export {
   readFilesAfter,
   handleFilesDeleted,
   handleHashesDeleted,
-  readHashesCollided
+  readHashesCollided,
+  findCssDeps
 };

@@ -1112,6 +1112,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               const flatClasses = (scopeNode.attribs.flatClasses =
                 scopeNode.attribs.flatClasses || []);
 
+              const modCls = scopeNode.attribs.class?.split (' ').find (cls => cls.startsWith (`${valueObj.scopeName}--`));
+             
+              if (modCls)
+                flatClasses.unshift (modCls.replace (`${valueObj.scopeName}--`, `${valueObj.hashedName}--`));
+
               flatClasses.unshift(`${valueObj.hashedName}`);
             
               if (state.config.teamGit)
