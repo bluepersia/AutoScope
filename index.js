@@ -56,6 +56,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
   state.devMode = devMd;
 
   initTeamSrc();
+  initLocalStorage ();
 
   state.config.initOutputDir = state.config.outputDir;
   state.config.copyDir = state.config.outputDir;
@@ -141,10 +142,7 @@ function initTeamSrc() {
 
   if (state.config.teamGit)
   {
-    if (!fs.existsSync(state.lsPath)) {
-      fs.mkdirSync(state.lsPath, { recursive: true }); // Creates the directory
-    }
-    state.localStorage = new LocalStorage (state.lsPath);
+   
     state.renameCache = JSON.parse(state.localStorage.getItem('renameCache') ?? '{}');
 
     state.teamGit = simpleGit(`${process.cwd()}/${state.config.teamGit}`);
@@ -153,6 +151,24 @@ function initTeamSrc() {
     state.config.outputDir = `${state.config.teamGit}/${state.config.teamSrc[0]}`;
   else 
     state.config.outputDir = state.config.teamGit;
+  }
+}
+
+function initLocalStorage ()
+{
+  if (state.config.teamGit || state.config.preserveSuffixes)
+  {
+    if (!fs.existsSync(state.lsPath)) {
+      fs.mkdirSync(state.lsPath, { recursive: true }); // Creates the directory
+    }
+    state.localStorage = new LocalStorage (state.lsPath);
+    
+    if (state.config.preserveSuffixes)
+    {
+      const suffixesPath = state.suffixesPath = state.config.teamGit ? 'suffixes-private' : 'suffixes';
+      if (!fs.existsSync (suffixesPath))
+        fs.mkdirSync (path.join (state.lsPath, suffixesPath), { recursive:true});
+    }
   }
 }
 function initFormatters() {
@@ -1020,4 +1036,5 @@ export {
   initInputReact,
   initFormatters,
   initTeamSrc,
+  initLocalStorage
 };

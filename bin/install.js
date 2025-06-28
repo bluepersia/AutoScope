@@ -27,9 +27,25 @@ if (fs.existsSync ('.gitignore'))
 
 gitIgnore += `/dist
 /dev-temp
-/local-storage`
+/auto-scope/renameCache
+/auto-scope/suffixes-private`
 
 fs.writeFileSync ('.gitignore', gitIgnore);
+
+
+let gitAttributes = '';
+if(fs.existsSync ('.gitattributes'))
+  gitAttributes = fs.readFileSync ('.gitattributes') + '\n';
+
+gitAttributes += 'auto-scope/suffixes/*.json merge=keepTheirs';
+
+let gitConfig = '';
+if (fs.existsSync ('.git/config'))
+  gitConfig = fs.readFileSync ('.git/config');
+
+gitConfig += `[merge "keepTheirs"]
+    name = Always keep theirs
+    driver = true`
 
 fs.writeFileSync ('auto-scope.config.js', defaultConfig);
   

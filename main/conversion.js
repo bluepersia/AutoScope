@@ -12,7 +12,8 @@ import {
   replaceLast,
   removeIdFromCache,
   serializeHtml,
-  isSelectorTargetClass
+  isSelectorTargetClass,
+  getHash
 } from '../shared.js';
 import { writeToAST, replaceLinkStylesheetsWithImports } from './react.js';
 import {writeToAST as writeToASTJs} from './jsParser.js';
@@ -90,6 +91,16 @@ async function lintCss(cssCode, filepath) {
 function removeDummyComment (str)
 {
   return str.replaceAll ('/* DUMMY */', '');
+}
+
+function getSuffixJSON (scopeName)
+{
+  let curr = state.suffixes[scopeName];
+  if(curr)
+    return curr;
+
+  curr = state.suffixes[scopeName] = JSON.parse (state.localStorage.getItem (path.join (state.lsPath, state.suffixesPath, `${scopeName}.json`) ?? '{}'));
+  return curr;
 }
 
 async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
@@ -189,7 +200,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         file,
         css: await fs.promises.readFile(file, 'utf-8'),
       };
-      obj.hasHash = obj.css.includes('--scope-hash:');
+      obj.hash = obj.css.includes('--scope-hash:') && getHash (obj.css);
 
       return obj;
     })
@@ -395,7 +406,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     rule.selector.push(flat);
   }
 
-  for (let { file, fileName, css, hasHash } of cssFilesObjs) {
+  for (let { file, fileName, css, hash } of cssFilesObjs) {
 
    
     const relativePath = path.relative(inputDir, file);
@@ -437,17 +448,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     //const fullScope = scopes.includes(fileName) ? fileName : null;
     //const folderName = path.basename(path.dirname(file));
 
-    let hash;
+    //let hash;
 
     
 
     //if (!scopeHashsMap.hasOwnProperty(fileName))
     //   scopeHashsMap[fileName] = new Set();
 
-    if (localConfig.teamSrc || localConfig.writeRuntimeMap) {
-      if (hasHash) {
-        hash = 'READ';
-      } else {
+    if (localConfig.teamSrc || localConfig.writeRuntimeMap || localConfig.preserveSuffixes) {
+      if (!hash) {
         hash = generateCssModuleHash(fileName);
 
         let result;
@@ -483,12 +492,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
         let suffixOverride = false;
         let resolveTag;
-        if (hash === 'READ') {
-          hashRead = findHash(root);
+        if (hash) {
+          hashRead = hash;
           
-          const idWithHash = findIdFromCache(fileName, { hash: hashRead });
+          const idWithHash = findIdFromCache(fileName, { hash });
 
-          hash = hashRead;
           resolveTag = findResolveTag(root);
 
           if (idWithHash) {

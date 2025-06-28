@@ -10,7 +10,7 @@ import serializeNode from "dom-serializer";
 import fg from 'fast-glob';
 import { LocalStorage } from 'node-localstorage';
 import { default as inquirer } from 'inquirer';
-const lsPath = './local-storage';
+const lsPath = './auto-scope';
 import { globby } from 'globby';
 
 
@@ -881,10 +881,10 @@ function parseCssScopeHashes(cssContent) {
     const classMatches = [...selector.matchAll(/\.[a-zA-Z0-9_-]+/g)];
     if (classMatches.length === 0) continue;
 
-    const hashMatch = body.match(/--scope-hash\s*:\s*([^;]+);?/);
-    if (!hashMatch) continue;
+    const hash = getHash (body);
 
-    const hash = hashMatch[1].trim().split(' /*')[0];
+    if (!hash)
+      continue;
 
     for (const m of classMatches) {
       //const className = m[0].slice(1);
@@ -1051,16 +1051,27 @@ async function readFilesAfter() {
 
       if(content.includes ('--scope-hash'))
       {
-        const hashMatch = content.match(/--scope-hash\s*:\s*([^;]+);?/);
-        if (!hashMatch) continue;
+        const hash = getHash (content);
 
-        const hash = hashMatch[1].trim().split(' /*')[0];
+        if(!hash)
+          continue;
 
         if (state.nameCollisions.has (hash))
           console.log (`🧬 ${cssFile} is colliding! It will have a new suffix on next build.`);
       }
     }
   }
+
+
+ function getHash (css)
+{
+  const hashMatch = content.match(/--scope-hash\s*:\s*([^;]+);?/);
+  if (!hashMatch) 
+    return false;
+
+    const hash = hashMatch[1].trim().split(' /*')[0];
+    return hash;
+}
 export {
   state,
   setConfig,
@@ -1093,5 +1104,6 @@ export {
   handleFilesDeleted,
   handleHashesDeleted,
   readHashesCollided,
-  findCssDeps
+  findCssDeps,
+  getHash
 };

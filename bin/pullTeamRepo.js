@@ -10,6 +10,7 @@ import {
   initTeamSrc,
   checkDevMode,
   build,
+  initLocalStorage,
 } from '../index.js';
 import { isGitError, state, renameFile, getPrePullState, readFilesAfter, handleFilesDeleted, handleHashesDeleted, readHashesCollided } from '../shared.js';
 import { readTeamIDs, syncTeamRepo } from '../main/teamRepo.js';
@@ -75,6 +76,7 @@ args.forEach((arg, index) => {
 await initCombinatorFlattening(config);
 await initFormatters();
 initTeamSrc();
+initLocalStorage ();
 state.config.initOutputDir = state.config.outputDir;
 state.config.copyFiles = false;
 
