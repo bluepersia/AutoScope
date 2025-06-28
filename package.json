@@ -74,7 +74,8 @@
     "recast": "^0.23.11",
     "simple-git": "^3.28.0",
     "stylelint": "^16.21.0",
-    "stylelint-config-standard": "^38.0.0"
+    "stylelint-config-standard": "^38.0.0",
+    "wait-on": "^8.0.3"
   },
   "repository": {
     "type": "git",

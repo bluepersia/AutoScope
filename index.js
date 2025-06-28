@@ -74,7 +74,6 @@ async function init(newConfig, runtimeMp, devMd = false) {
     state.config.devMode = true;
     state.config.mergeCss = false;
     process.on('SIGINT', cleanUp);
-    if (state.config.teamSrc) startDevServer();
   }
 
   if (!newConfig.copyFiles && state.config.teamGit)
@@ -847,7 +846,6 @@ async function build(
   runtimeMap = null,
   devMode = false,
   overwrite = true,
-  doReadTeamIDs = true
 ) {
   await setConfig(await init(cfg, runtimeMap, devMode));
   
@@ -915,6 +913,8 @@ async function build(
         console.error('❌ Failed to check Git status:', err);
       }
     }
+    if (state.devMode)
+      startDevServer();
   
 }
 function removeIdFromCache(filePath) {

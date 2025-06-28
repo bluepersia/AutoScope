@@ -3,6 +3,7 @@
 import { promisify } from 'util';
 import { spawn } from 'child_process';
 import devPath from './devPath.js';
+import waitOnPath from './waitOnPath.js';
 
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -28,16 +29,15 @@ import loadConfig from './loadConfig.js';
 const config = (state.config = await loadConfig());
 
 import concurrently from 'concurrently';
-
 async function main() {
   try {
-    await runCommand('npx', ['dev-init']);
+    //await runCommand('npx', ['dev-init']);
 
     const { result} = concurrently(
       [
         { command: 'npx dev', name: 'auto-scope', prefixColor:'magenta' },
         {
-          command: `npx vite dev-temp --config ${
+          command: `"${waitOnPath}" tcp:3012 && npx vite dev-temp --config ${
             config.teamGit
               ? `${config.teamGit}/${config.viteConfig || 'vite.config.js'}`
               : 'vite.config.js'

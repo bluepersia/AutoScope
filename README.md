@@ -131,6 +131,16 @@ Import your modules via:
 <meta name="auto-scope" content="./css/recipe-card.css" />
 ```
 
+If there's 2 files with same name (same class name) in same HTML, you need to explicitly link them with the content.
+
+```html
+<meta name="auto-scope-1" content="./css/product card/card.css" />
+<meta name="auto-scope-2" content="./css/food card/card.css" />
+
+<article class="card card--product" data-scope="1" />
+<article class="card card--food" data-scope="2" />
+```
+
 ### 🟨 JavaScript
 
 CSS files adjacent to your JavaScript will automatically be imported unless you include `.exclude.` in the file name.

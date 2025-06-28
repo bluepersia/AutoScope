@@ -64,6 +64,12 @@ async function lintCss(cssCode, filepath) {
         "media-feature-range-notation": null,
         "selector-class-pattern": null,
         "comment-empty-line-before": null,
+        "at-rule-empty-line-before": null,
+        "font-family-name-quotes": null,
+        "color-function-alias-notation": null,
+        "color-function-notation": null,
+        "color-hex-length": null,
+        "alpha-value-notation":null,
         // optional: avoid crashing on unknown at-rules like Tailwind
         'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
@@ -1074,6 +1080,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       //const otherMetaTags = metaTags.filter((t) => t != tag);
 
       selectorEntries.forEach(([filePath, valueObj]) => {
+        
         if (tag.relativePath === filePath) {
           const foundPath = filesFound[filePath];
           if (!state.config.mergeCss && !dom.isJs)

@@ -523,9 +523,9 @@ function resolveHref(filePath, href) {
   const resolved = new URL(href, base);
 
   // Return the resolved pathname relative to the root
-  return resolved.pathname.startsWith('/')
+  return decodeURIComponent(resolved.pathname.startsWith('/')
     ? resolved.pathname.slice(1)
-    : resolved.pathname;
+    : resolved.pathname);
 }
 
 function getHasClassRegex(klass) {
