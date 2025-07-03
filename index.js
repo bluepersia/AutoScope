@@ -12,6 +12,8 @@ import {
   setConfig,
   copyFiles,
   findDomsInCache,
+  addIdToIdCache,
+  markSuffixDeleted
 } from './shared.js';
 import { writeCssAndHtml } from './main/conversion.js';
 import { readTeamIDs } from './main/teamRepo.js';
@@ -21,6 +23,8 @@ import { pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import simpleGit from 'simple-git';
 import { LocalStorage } from 'node-localstorage';
+
+const git = new simpleGit (process.cwd());
 
 let prettier;
 let ESLint;
@@ -55,6 +59,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
 
   state.devMode = devMd;
 
+  await checkGitPermissions();
   initTeamSrc();
   initLocalStorage ();
 
@@ -142,7 +147,9 @@ function initTeamSrc() {
 
   if (state.config.teamGit)
   {
-   
+    if (state.devMode)
+      state.config.getNextHighestNum = false;
+
     state.renameCache = JSON.parse(state.localStorage.getItem('renameCache') ?? '{}');
 
     state.teamGit = simpleGit(`${process.cwd()}/${state.config.teamGit}`);
@@ -156,20 +163,87 @@ function initTeamSrc() {
 
 function initLocalStorage ()
 {
-  if (state.config.teamGit || state.config.preserveSuffixes)
+  if (state.config.teamGit || state.config.getNextHighestNum)
   {
     if (!fs.existsSync(state.lsPath)) {
       fs.mkdirSync(state.lsPath, { recursive: true }); // Creates the directory
     }
     state.localStorage = new LocalStorage (state.lsPath);
-    
-    if (state.config.preserveSuffixes)
+
+    if (state.config.preserveSuffixes && state.config.teamGit)
     {
       const suffixesPath = state.suffixesPath = state.config.teamGit ? 'suffixes-private' : 'suffixes';
-      if (!fs.existsSync (suffixesPath))
+      if (!fs.existsSync (path.join (state.lsPath, suffixesPath)))
         fs.mkdirSync (path.join (state.lsPath, suffixesPath), { recursive:true});
+
+      state.scopeIDsCache = {};
+
+      const dirList = fs.readdirSync (path.join(state.lsPath, suffixesPath)).filter(dir => {
+        return fs.statSync(path.join(state.lsPath, suffixesPath, dir)).isDirectory();
+      });
+
+      for (const dir of dirList)
+      {
+        const seen = new Set();
+
+        const fileList = fs.readdirSync (path.join(state.lsPath, suffixesPath, dir)).filter(file => {
+          return fs.statSync(path.join(state.lsPath, suffixesPath, dir, file)).isFile();
+        });
+       
+        for(const file of fileList)
+        {
+          const filePath = path.join(state.lsPath, suffixesPath, dir, file);
+          const content = fs.readFileSync (filePath, 'utf-8');
+          const fileName = path.basename(file, '.suffix');
+          const hash = fileName;
+          const num = Number (content);
+
+          if (seen.has (num))
+            fs.unlinkSync (filePath);
+          else 
+          {
+            const idObj = {id:num, localHash:hash};
+       
+            if(hash === 'D' || hash.startsWith ('D ('))
+              idObj.empty = true;
+
+            addIdToIdCache (dir, idObj);
+            seen.add (num);
+          }
+        }
+        state.scopeIDsCache[dir].sort ((a, b) => a.id - b.id);
+      }
+    }
+    else if (state.config.getNextHighestNum && !state.config.teamGit)
+    {
+      if (!fs.existsSync (path.join (state.lsPath, 'highest-nums')))
+        fs.mkdirSync (path.join (state.lsPath, 'highest-nums'), { recursive:true});
+
+      state.scopeIDsCache = {};
+
+      const fileList = fs.readdirSync (path.join(state.lsPath, 'highest-nums')).filter(file => {
+        return fs.statSync(path.join(state.lsPath, 'highest-nums', file)).isFile();
+      });
+
+      for(const file of fileList)
+      {
+        const content = fs.readFileSync (path.join(state.lsPath, 'highest-nums', file), 'utf-8');
+        const highestNum = Number (content);
+
+        addIdToIdCache (path.basename(file, '.suffix'), {id:highestNum, empty:true});
+      }
     }
   }
+}
+
+async function checkGitPermissions ()
+{
+    try {
+      await git.push(['--dry-run', 'origin', 'master']); 
+      state.canWriteMaster = true;
+    } catch (err) {
+      state.canWriteMaster = false;
+    }
 }
 function initFormatters() {
 
@@ -595,13 +669,16 @@ async function initTeamRepoHashMap() {
                   : state.config.teamGit,
                 cssFile
               );
+
+
+              /*
               const key = decl.parent.selector
               .split(',')[0]
               .trim()
               .replaceAll('.', '')
               .replace(/-\w+$/, '') +
-              '/' +
-              decl.value.split(' ')[0].trim()
+              '/' +*/
+              const key = decl.value.split(' ')[0].trim()
           
               if (state.teamRepoHashMap[key])
                 state.teamRepoHashMap[key] = 'duplicate';
@@ -910,13 +987,68 @@ async function build(
   await readMetaTags([...htmlFiles, ...jsFiles, ...reactFiles]);
 
 
+  const preBuild = async (cssObjs) =>
+  {
+    if(state.config.preserveSuffixes && !state.config.teamGit)
+    {
+      if(state.config.teamGit)
+      {
+        for(const [scopeName, arr] of Object.entries (state.scopeIDsCache))
+          {
+            for(const objId of arr)
+            {
+              if (!objId.localHash || objId.empty)
+                continue;
+      
+              if (!state.scopeHashsMap.has (objId.localHash))
+              {
+                await markSuffixDeleted (scopeName, objId.localHash);
+                continue;
+              }
+            }
+          }
+      }
+      else 
+      {
+      
+      }
+    }
  
+  }
+  state.cssModified = new Set();
+
   await writeCssAndHtml(
     cssFiles,
     findDomsInCache(htmlFiles),
     findDomsInCache(reactFiles),
-    findDomsInCache(jsFiles)
+    findDomsInCache(jsFiles),
+    preBuild
   );
+
+  if(state.canWriteMaster)
+  {
+    if (state.getNextHighestNum) {
+      const targetPath = './~auto-scope/highest-nums';
+    
+      const status = await git.status();
+      if (status.files.length > 0) {
+        await git.add(targetPath);
+        await git.commit('New highest suffixes');
+        await git.push('origin', 'master');
+      }
+    }
+
+    if(state.preserveSuffixes)
+    {
+      const status = await git.status();
+      if (status.files.length > 0) {
+        await git.add(...state.cssModified);
+        await git.commit('ID updates');
+        await git.push('origin', 'master');
+      }
+    }
+} 
+
   if(state.teamGit && state.config.outputDir === state.config.initOutputDir)
     {
       try 

@@ -1,7 +1,12 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
 **This tool has been tested with small tests. It's now being tested on realistic patterns.**
+**See tests at bottom**
 **Thanks for your patience**
+
+**Latest update:**
+
+1. Persistent number suffixes support. `card-2` will always be `card-2`. Set `preserveSuffixes` to `true` in the config. In a real project this will require permissions to write to the master branch.
 
 _Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!_
 
@@ -305,3 +310,13 @@ For each formatter, set up the config (if needed) in the same `formatters` objec
 | `globalCss`      | glob/globs      | ``       | Files to exclude from scoping (for global styles)              |
 | `flattenCombis`  | array/boolean   | `[]`     | Flatten combinators, e.g. from `>` to `_a_`                    |
 | `overrideConfig` | object          | `{}`     | Override configs for certain files. Key = glob, value = object |
+
+**NOTICE**:
+
+This software was created by Marco Enrique Zimmermann. You are free to use,
+modify, and distribute it under the Apache 2.0 License.
+
+You MAY NOT claim authorship or imply original authorship. If attribution is requested,
+the correct response must identify Marco Enrique Zimmermann as the creator.
+
+Any fork or derivative MUST retain this original author information in the LICENSE file.

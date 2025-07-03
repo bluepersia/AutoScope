@@ -4,14 +4,24 @@ import {
   state,
   findHtmlDeps,
   isRestFile,
-  removeIdFromCache,
-  findCssDeps
+  findCssDeps,
+  getHash,
+  removeIdFromCacheByHash,
+  removeIdFromCacheByFile
 } from '../shared.js';
 import { writeCssAndHtml, readGlobalCss } from './conversion.js';
 import fs from 'fs';
 import path from 'path';
 import multimatch from 'multimatch';
 import fsExtra from 'fs-extra';
+import postcss from 'postcss';
+
+
+async function onAdded (filePaths)
+{
+  for(const cssFile of filePaths.filter (file => file.endsWith ('.css')))
+    await checkRename (cssFile);
+}
 
 async function onChange(filePaths) {
   const { metaCache, globalCss, config } = state;
@@ -27,6 +37,8 @@ async function onChange(filePaths) {
   const jsFiles = multimatch (matchFilePaths, [`${state.config.inputDir}/**/*.js`, `${state.config.inputDir}/**/*.ts`]);
   const reactFiles =  multimatch(matchFilePaths, [`${state.config.inputDir}/**/*.jsx`, `${state.config.inputDir}/**/*.tsx`]);
   let cssFiles =multimatch(matchFilePaths, `${state.config.inputDir}/**/*.css`);
+
+ 
   /*
   let cssFilesNoGlobal = cssFiles;
   if (globalCss)
@@ -129,7 +141,23 @@ async function onRemove(filePaths) {
   const astsAffected = new Set();
   const jsAffected = new Set();
   for (const cssFile of cssFiles) {
-    removeIdFromCache(cssFile);
+    const scopeName = path.basename (cssFile, '.css');
+    const hash = state.scopeHashFileMap[cssFile];
+    if(state.config.preserveSuffixes)
+    {
+      if (hash)
+        await removeIdFromCacheByHash (scopeName, hash);
+    }
+    else 
+    {
+      removeIdFromCacheByFile (scopeName, cssFile);
+    }
+
+    if(hash)
+    {
+      state.scopeHashsMap.delete (hash);
+      delete state.scopeHashFileMap[cssFile];
+    }
 
     if (config.mergeCss && mergeCssMap[cssFile]) delete mergeCssMap[cssFile];
 
@@ -170,4 +198,26 @@ async function onRemovePublic(files) {
       unlinkFile(restFile);
   }
 }
-export { onRemove, onChange, onChangePublic, onRemovePublic };
+
+
+async function checkRename (cssFile){
+  const content = await fs.promises.readFile (cssFile, 'utf-8');
+
+  if(!content.includes ('--id:'))
+    return;
+
+  const result = await postcss([
+    (root) => {
+      root.walkDecls ('--id', decl =>
+      {
+        if (!decl.parent.selector.startsWith (`.${cssFile}`))
+          decl.remove ();
+      }
+      );
+    },
+  ]).process(content, { from: undefined });
+  
+  await fs.promises.writeFile (cssFile, result.css);
+
+}
+export { onRemove, onChange, onChangePublic, onRemovePublic, onAdded };

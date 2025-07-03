@@ -13,7 +13,8 @@ import {
   removeIdFromCache,
   serializeHtml,
   isSelectorTargetClass,
-  getHash
+  getHash,
+  markSuffixDeleted
 } from '../shared.js';
 import { writeToAST, replaceLinkStylesheetsWithImports } from './react.js';
 import {writeToAST as writeToASTJs} from './jsParser.js';
@@ -71,6 +72,7 @@ async function lintCss(cssCode, filepath) {
         "color-function-notation": null,
         "color-hex-length": null,
         "alpha-value-notation":null,
+        "declaration-property-value-no-unknown": null,
         // optional: avoid crashing on unknown at-rules like Tailwind
         'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
@@ -93,17 +95,14 @@ function removeDummyComment (str)
   return str.replaceAll ('/* DUMMY */', '');
 }
 
-function getSuffixJSON (scopeName)
-{
-  let curr = state.suffixes[scopeName];
-  if(curr)
-    return curr;
-
-  curr = state.suffixes[scopeName] = JSON.parse (state.localStorage.getItem (path.join (state.lsPath, state.suffixesPath, `${scopeName}.json`) ?? '{}'));
-  return curr;
+function findIdFromCacheById(scopeName, id) {
+  return (
+    state.scopeIDsCache[scopeName] &&
+    state.scopeIDsCache[scopeName].find(o => o.id === id && !o.empty));
 }
 
-async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
+
+async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => {}) {
   const cssConfigs = {};
 
  
@@ -134,6 +133,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
           .replaceAll(` ${combi}`, flat);
     });
     return selector;
+  }
+
+  function getId(css) {
+    const hashMatch = css.match(/--id\s*:\s*([^\s;\/]+)/);
+   
+    return hashMatch ? Number (hashMatch[1]) : false;
   }
 /*
     function replaceCombinators(selector, flatten = []) {
@@ -167,6 +172,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   const selectors = {};
   // 3. Rewrite CSS files, replacing all classes with hashed names
 
+  /*
   async function sortFilesOldestFirst(files) {
     
     const filesWithTimes = await Promise.all(
@@ -190,9 +196,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     });
 
     return filesWithTimes.map((file) => file.path);
-  }
+  }*/
 
-  cssFiles = await sortFilesOldestFirst(cssFiles.filter (cssFile => !globalCssFiles.includes (cssFile)));
+  cssFiles = cssFiles.filter (cssFile => !globalCssFiles.includes (cssFile));
   const cssFilesObjs = await Promise.all(
     cssFiles.map(async (file) => {
       const obj = {
@@ -201,10 +207,16 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         css: await fs.promises.readFile(file, 'utf-8'),
       };
       obj.hash = obj.css.includes('--scope-hash:') && getHash (obj.css);
+      obj.id = obj.css.includes('--id:') && getId (obj.css);
+
+      if(obj.hash && !state.config.teamGit)
+        state.scopeHashsMap.add (obj.hash);
 
       return obj;
     })
   );
+
+  await preWriteCb (cssFilesObjs);
 
   for(const globalCssFile of globalCssFiles)
   {
@@ -219,7 +231,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
   const filesFound = {};
 
-  function attachHash(root, scopeName, hash, localConfig) {
+
+ 
+
+  function attachHash(root, scopeName, hash, localConfig, varName = 'scope-hash') {
+    hash = hash.toString();
+
     const selector = `.${scopeName}`;
     let rule = root.nodes.find(
       (node) => node.type === 'rule' && node.selector === selector
@@ -230,7 +247,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     }
     // remove existing and add new --scope-hash
     let already;
-    rule.walkDecls('--scope-hash', (d) => { 
+    rule.walkDecls(`--${varName}`, (d) => { 
     already = d
   
     });
@@ -242,7 +259,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       }
 
     const newDecl = postcss.decl({
-      prop: '--scope-hash',
+      prop: `--${varName}`,
       value: hash,
     });
 
@@ -251,12 +268,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     //dummy.raws.before = '\n';
     //rule.prepend(dummy);
 
-    if (localConfig.teamSrc) {
       newDecl.raws.value = {
-        raw: `${hash}; /* Collision-prevention ID */`,
+        raw: `${hash}; ${state.config.teamGit && '/* Collision-prevention ID */'}`,
         value: hash, // must match actual value for parsing consistency
       };
-    }
     // Append it to the rule
     rule.prepend(newDecl);
     function getPreviousDecl(decl) {
@@ -278,6 +293,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
       next.raws.before = '\n' + indent;
     }*/
   }
+
+
 
   function findHash(root) {
     let value;
@@ -406,9 +423,19 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     rule.selector.push(flat);
   }
 
-  for (let { file, fileName, css, hash } of cssFilesObjs) {
+  
+  for (const cssFileObj of cssFilesObjs) {
 
-   
+    let { file, fileName, css, hash, id } = cssFileObj;
+
+    if(!state.config.teamGit && hash)
+    {
+      const firstHash = cssFilesObjs.find (o => o.hash === hash);
+
+      if (firstHash && firstHash !== cssFileObj)
+        hash = false;
+    }
+
     const relativePath = path.relative(inputDir, file);
    
     let outPath = path.join(outputDir, relativePath);
@@ -438,12 +465,24 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
     let scopeIndex = 1;
 
-    const cachedId =  findIdFromCache(fileName, { filePath: file });
-    const freeId = getFreeId(fileName);
 
-    if (cachedId && freeId > cachedId.id) scopeIndex = cachedId.id;
-    else {
-      scopeIndex = freeId;
+    const freeId = getFreeId(fileName);
+    scopeIndex = freeId;
+
+    if(state.config.preserveSuffixes)
+    {
+      if(id)
+      {
+        const alreadyId = findIdFromCacheById (fileName, id);
+
+        if(!alreadyId || alreadyId.filePath === file)
+          scopeIndex = id;
+      }
+    }
+    else 
+    {
+      const cachedId =  findIdFromCache(fileName, { filePath: file });
+      if (cachedId) scopeIndex = cachedId.id;
     }
     //const fullScope = scopes.includes(fileName) ? fileName : null;
     //const folderName = path.basename(path.dirname(file));
@@ -455,9 +494,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     //if (!scopeHashsMap.hasOwnProperty(fileName))
     //   scopeHashsMap[fileName] = new Set();
 
-    if (localConfig.teamSrc || localConfig.writeRuntimeMap || localConfig.preserveSuffixes) {
+    if (localConfig.teamSrc || localConfig.writeRuntimeMap) {
       if (!hash) {
-        hash = generateCssModuleHash(fileName);
+        hash = generateCssModuleHash(file);
 
         let result;
         try {
@@ -476,7 +515,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     } else {
       hash = scopeHashFileMap[file];
 
-      if (!hash) hash = generateCssModuleHash(fileName);
+      if (!hash) hash = generateCssModuleHash(file);
     }
 
     let result;
@@ -499,12 +538,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
           resolveTag = findResolveTag(root);
 
-          if (idWithHash) {
+          if (idWithHash?.hash) {
             if (!resolveTag) {
               scopeIndex = idWithHash.id;
               suffixOverride = idWithHash.suffix;
             }
-          }
+          } else if (idWithHash?.localHash)
+            scopeIndex = idWithHash.id;
          /* else if (idWithHash?.localHash)
           {
             scopeIndex = idWithHash.id;
@@ -512,7 +552,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
 
           if (resolveTag) {
             
-            hash = generateCssModuleHash(fileName, 1);
+            hash = generateCssModuleHash(file, 1);
 
             attachHash(root, fileName, hash, localConfig);
             const out = removeDummyComment (await state.cssFormatter(root.toString()));
@@ -520,7 +560,13 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
             else await fs.promises.writeFile(file, out, 'utf-8');
           }
         }
-        const idObj = { id: scopeIndex , filePath: file};
+        const idObj = { id: scopeIndex };
+        if(state.config.preserveSuffixes && state.config.teamGit)
+        {
+          idObj.localHash = hash;
+        }
+        else 
+          idObj.filePath = file;
 
         /*
         if(state.config.teamGit)
@@ -528,8 +574,19 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
         else 
           // idObj.filePath = file;*/
 
-        addIdToIdCache(fileName, idObj);
+        const added = addIdToIdCache(fileName, idObj);
+       
+        if(added && state.config.preserveSuffixes && !state.config.teamGit && id !== idObj.id)
+        {
+          attachHash(root, fileName, scopeIndex, localConfig, 'id');
+          const out = await state.cssFormatter(root.toString());
+          await fs.promises.writeFile(file, out, 'utf-8');
+          state.cssModified.add (file);
+          if(state.devMode)
+            return;
+        }
 
+        root.walkDecls ('--id', decl => decl.remove());
         //scopeHashsMap[fileName].add(hash);
         scopeHashsMap.add(hash);
 
@@ -631,16 +688,16 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
     let fileFound;
 
     if (hashRead) {
-      const mapObj = state.teamRepoHashMap[fileName + '/' + hashRead];
-
+      //const mapObj = state.teamRepoHashMap[fileName + '/' + hashRead];
+      const mapObj = state.teamRepoHashMap[hashRead];
       if (mapObj === 'duplicate')
-        throw Error (`💥 Hash conflict (${file})! Regenerate the hash and insert it into the team repo on the master branch.`)
+        throw Error (`💥 Hash conflict (${file})! Regenerate the hash and insert it into the team repo.`)
 
       if (mapObj) {
         const { cssRoot, filePath } = mapObj;
 
-        delete state.teamRepoHashMap[fileName + '/' + hashRead];
-        state.teamRepoHashMap[fileName + '/' + hash] = mapObj;
+        delete state.teamRepoHashMap[hashRead];
+        state.teamRepoHashMap[hash] = mapObj;
 
         const root = cssRoot;
         fileFound = {
@@ -663,6 +720,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
               targetClass = rule.selector.split(',')[0].split(' ')[0].trim();
               insertIndex = root.index(rule); // ✅ Save the index before removal
               targetRule = rule;
+              decl.value = hash;
               return false; // Stop searching
             }
           }
@@ -783,6 +841,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js) {
   if (state.config.teamGit)
     state.localStorage.setItem ('renameCache', JSON.stringify (state.renameCache));
 
+  
+ 
   /*
   const IDsCacheOnlyLocalHashes = {}
   for(const [key, arr] of Object.entries (state.scopeIDsCache))

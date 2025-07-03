@@ -7,6 +7,7 @@ export default {
   outputDir: 'dist', // This is where the converted files will be created
   dontFlatten: false, // Keep compound selectors rather than automatic BEM-style flattening
   useNumbers: true, // Use numbers (1, 2, 3, 4) instead of hash (3d0ccd)
+  preserveSuffixes: false, //card-2 will always be card-2
   dontHashFirst: true, // The first scope of a certain type doesn't get an ID or hash
   mergeCss: false, // Merge all the CSS into one file
   teamGit: '', //The git repo of the team/main project (private mode)
@@ -26,9 +27,10 @@ if (fs.existsSync ('.gitignore'))
 
 
 gitIgnore += `/dist
+/node_modules
 /dev-temp
-/auto-scope/renameCache
-/auto-scope/suffixes-private`
+/~auto-scope/renameCache
+/~auto-scope/suffixes-private`
 
 fs.writeFileSync ('.gitignore', gitIgnore);
 
@@ -37,15 +39,24 @@ let gitAttributes = '';
 if(fs.existsSync ('.gitattributes'))
   gitAttributes = fs.readFileSync ('.gitattributes') + '\n';
 
-gitAttributes += 'auto-scope/suffixes/*.json merge=keepTheirs';
+gitAttributes += '~auto-scope/suffixes/** linguist-generated=true merge=ours';
+gitAttributes += '\n'
+gitAttributes += '~auto-scope/highest-nums/** linguist-generated=true merge=ours';
 
+fs.writeFileSync ('.gitattributes', gitAttributes);
+
+/*
 let gitConfig = '';
 if (fs.existsSync ('.git/config'))
   gitConfig = fs.readFileSync ('.git/config');
 
 gitConfig += `[merge "keepTheirs"]
     name = Always keep theirs
-    driver = true`
+    driver = cp %B %A
+`
+
+fs.mkdirSync ('.git');
+fs.writeFileSync ('.git/config', gitConfig);*/
 
 fs.writeFileSync ('auto-scope.config.js', defaultConfig);
   
