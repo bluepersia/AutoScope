@@ -986,7 +986,15 @@ function clearTeamFromIDCache() {
   state.nameCollisions = new Set();
   
   for (const [key, arr] of Object.entries(state.scopeIDsCache))
-    state.scopeIDsCache[key] = arr.filter((obj) => !obj.hash && !obj.team);
+    state.scopeIDsCache[key] = arr.map((obj) => { 
+    
+      if (!obj.hash && !obj.team)
+        return obj;
+      else if(obj.hash)
+        state.scopeHashsMap.delete (obj.hash);
+
+      return {id:obj.id, empty:true};
+});
 
   //state.scopeHashsMap = new Set (Array.from (state.scopeHashsMap).filter (h => !state.teamRepoHashMap.has (h)));
   //state.teamRepoHashMap = new Set();
@@ -1096,6 +1104,7 @@ async function readTeamIDs() {
         });
       },
     ]).process(teamCss, { from: undefined });
+
   }
   //let containsScope = false;
 

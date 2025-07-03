@@ -10,7 +10,7 @@ import serializeNode from "dom-serializer";
 import fg from 'fast-glob';
 import { LocalStorage } from 'node-localstorage';
 import { default as inquirer } from 'inquirer';
-const lsPath = './local-storage';
+const lsPath = './~auto-scope';
 import { globby } from 'globby';
 
 
@@ -56,9 +56,13 @@ let config = {
   flattenCombis: [], //Flatten combinators, e.g. > becomes _a_
   strictBEM: false, //Use - instead of __ after the first occurence
   flattenElements: true,
+  preserveSuffixes: false,
+  getNextHighestNum: true,
   overrideConfig: {},
   formatters: {}
 };
+
+
 const allCombis = {
   '*': '_all',
   '>': '_a_',
@@ -105,7 +109,7 @@ const state = {
   renameCache: {},
   nameCollisions: new Set(),
   localStorage: null,
-  lsPath
+  lsPath,
 };
 
 
@@ -134,23 +138,27 @@ function resolveConfigFor(filePath, baseConfig, root) {
 }
 
 function addIdToIdCache(scopeName, idObj) {
+
   let arr = state.scopeIDsCache[scopeName];
   if (!arr) arr = state.scopeIDsCache[scopeName] = [];
 
   const currIndex = arr.findIndex((obj) => obj.id === idObj.id);
   if (currIndex !== -1) {
-    let overwrite = false;
+
     const currObj = arr[currIndex];
 
+    let overwrite = false;
+
     if (idObj.hash) {
-      if ((!currObj.hash && !currObj.team))
+      if (!currObj.hash && !currObj.team)
         overwrite = true;
       else 
       {
         if(state.preserveCollidingSuffixes)
+        {
           state.nameCollisions.add (idObj.hash);
-        else
           overwrite = true;
+        }
       }
     }
 
@@ -162,24 +170,61 @@ function addIdToIdCache(scopeName, idObj) {
       if (!(currObj.hash && state.preserveCollidingSuffixes))
         overwrite = true;
     }
-    if (currObj.filePath) overwrite = true;
 
-    if (Object.keys(currObj).length === 1 && currObj.id) overwrite = true;
+    if (currObj.empty) overwrite = true;
 
     if (overwrite) { 
       if (currObj.hash && idObj.hash)
         currObj.hash.push (idObj.hash);
       else 
-      arr[currIndex] = idObj;
+      {
+        arr[currIndex] = idObj;
+        
+        if(currObj.localHash && idObj.localHash)
+          fs.unlinkSync (path.join(state.lsPath, state.suffixesPath, scopeName, `${currObj.localHash}.suffix`))
+        
+      }
+      
+      postIdAdd (scopeName, idObj);
+
+      return true;
     }
 
-    return;
+    return false;
   }
 
   if(idObj.hash)
     idObj.hash = [idObj.hash];
   
-  arr.push(idObj);
+
+  const last = arr.length > 0 ? arr[arr.length - 1] : null;
+  const insertAtEnd = !last || idObj.id > last.id;
+  if(insertAtEnd)
+    arr.push(idObj);
+  else 
+    arr.unshift (idObj);
+
+  postIdAdd (scopeName, idObj, insertAtEnd);
+
+  return true;
+}
+
+function postIdAdd (scopeName, idObj, addHighest = false)
+{
+  if(idObj.localHash || idObj.hash)
+    writeSuffixToFile (scopeName, idObj.hash || idObj.localHash, idObj.id);
+  else if (addHighest && idObj.filePath && state.config.getNextHighestNum)
+    fs.writeFileSync (path.join(state.lsPath, 'highest-nums', `${scopeName}.suffix`), idObj.id.toString())
+  
+}
+
+function writeSuffixToFile(scopeName, hash, id)
+{
+  if(!state.config.teamGit || !state.config.preserveSuffixes || !state.config.useNumbers) return;
+  
+  const outPath = path.join (state.lsPath, state.suffixesPath, scopeName, `${hash}.suffix`);
+  fs.mkdirSync (path.dirname (outPath), {recursive:true});
+  fs.writeFileSync (outPath, id.toString());
 }
 
 function addIdToIdCacheEnd(scopeName, idObj) {
@@ -227,7 +272,7 @@ function findIdFromCache(scopeName, obj) {
     state.scopeIDsCache[scopeName].find(
       (obj2) =>
         (obj.filePath && obj2.filePath === obj.filePath) ||
-        (obj.hash && (obj2.hash?.includes (obj.hash))) //||
+        (obj.hash && (obj2.localHash === obj.hash || (obj2.hash?.includes (obj.hash)))) //||
         //(obj.localHash && obj2.localHash === obj.localHash)
     )
   );
@@ -237,12 +282,15 @@ function getFreeId(scopeName) {
   const arr = state.scopeIDsCache[scopeName];
   if (!arr) return 1;
 
+  if (state.config.preserveSuffixes && state.config.getNextHighestNum)
+    return arr.at(-1).id + 1;
+  
   let freeSpot = 0;
   let index = 1;
   while (!freeSpot) {
     const obj = arr.find((o) => o.id === index);
 
-    if (!obj || (!obj.filePath && !obj.hash && !obj.global && !obj.team)) {
+    if (!obj || obj.empty) {
       freeSpot = index;
       break;
     }
@@ -256,8 +304,62 @@ function removeIdFromCache(scopeName, id) {
 
 
   state.scopeIDsCache[scopeName] = state.scopeIDsCache[scopeName].map((obj) =>
-    obj.id === id ? { id } : obj
+    obj.id === id ? { id, empty:true } : obj
   );
+}
+
+function removeIdFromCacheByFile (scopeName, filePath) {
+  if (!state.scopeIDsCache[scopeName]) return;
+
+
+  state.scopeIDsCache[scopeName] = state.scopeIDsCache[scopeName].map((obj) =>
+    obj.filePath === filePath ? { id:obj.id, empty:true  } : obj
+  );
+}
+
+async function removeIdFromCacheByHash (scopeName, hash)
+{
+  if (!state.scopeIDsCache[scopeName] || !state.config.teamGit) return;
+
+  const idObj = state.scopeIDsCache[scopeName].find((obj) =>
+    obj.localHash === hash 
+  );
+  
+    await markSuffixDeleted (scopeName, hash, idObj);
+}
+async function renameWithAutoSuffix(oldPath, newPath) {
+
+  const dir = path.dirname(newPath);
+  const ext = path.extname(newPath);
+  const base = path.basename(newPath, ext);
+
+  let attempt = 0;
+
+  while (true) {
+    const candidate = attempt === 0
+      ? newPath
+      : path.join(dir, `${base} (${attempt})${ext}`);
+
+    try {
+      await fs.promises.access(candidate);
+      // File exists, try next
+      attempt++;
+    } catch {
+      // File does not exist — safe to rename
+      await fs.promises.rename(oldPath, candidate);
+      return candidate;
+    }
+  }
+}
+async function markSuffixDeleted (scopeName, hash, idObj)
+{
+  const suffixFile = path.join(state.lsPath, state.suffixesPath, scopeName, `${hash}.suffix`);
+  const newName = await renameWithAutoSuffix (suffixFile, path.join(state.lsPath, state.suffixesPath, scopeName, `D.suffix`));
+  if(idObj)
+  {
+    idObj.localHash = path.basename(newName, '.suffix');
+    idObj.empty = true;
+  }
 }
 
 function getMacAddress() {
@@ -271,11 +373,11 @@ function getMacAddress() {
 }
 
 
-function generateCssModuleHash(fileName, attempt = 1, options = {}) {
+function generateCssModuleHash(file, attempt = 1, options = {}) {
   const { length = state.config.hashLength || 6, algorithm = 'md5' } = options;
 
   // Normalize to a consistent string
-  const normalized = path.normalize(`${fileName + getMacAddress()}?attempt=${attempt}`);
+  const normalized = path.normalize(`${file + new Date().getTime()}?attempt=${attempt}`);
 
   // Create hash
   const fullHash = crypto
@@ -285,9 +387,9 @@ function generateCssModuleHash(fileName, attempt = 1, options = {}) {
 
   // Return the first `length` chars
   const hash = fullHash.slice(0, length);
-
-  if (!/[a-zA-Z]/.test(hash) || state.scopeHashsMap.has(hash))
-    return generateCssModuleHash(fileName, attempt + 1);
+//!/[a-zA-Z]/.test(hash) || 
+  if (state.scopeHashsMap.has(hash))
+    return generateCssModuleHash(file, attempt + 1);
 
   /*
   if (
@@ -881,10 +983,10 @@ function parseCssScopeHashes(cssContent) {
     const classMatches = [...selector.matchAll(/\.[a-zA-Z0-9_-]+/g)];
     if (classMatches.length === 0) continue;
 
-    const hashMatch = body.match(/--scope-hash\s*:\s*([^;]+);?/);
-    if (!hashMatch) continue;
+    const hash = getHash (body);
 
-    const hash = hashMatch[1].trim().split(' /*')[0];
+    if (!hash)
+      continue;
 
     for (const m of classMatches) {
       //const className = m[0].slice(1);
@@ -1051,16 +1153,24 @@ async function readFilesAfter() {
 
       if(content.includes ('--scope-hash'))
       {
-        const hashMatch = content.match(/--scope-hash\s*:\s*([^;]+);?/);
-        if (!hashMatch) continue;
+        const hash = getHash (content);
 
-        const hash = hashMatch[1].trim().split(' /*')[0];
+        if(!hash)
+          continue;
 
         if (state.nameCollisions.has (hash))
           console.log (`🧬 ${cssFile} is colliding! It will have a new suffix on next build.`);
       }
     }
   }
+
+
+  function getHash(css) {
+    const hashMatch = css.match(/--scope-hash\s*:\s*([^\s;\/]+)/);
+    return hashMatch ? hashMatch[1] : false;
+  }
+
+  
 export {
   state,
   setConfig,
@@ -1093,5 +1203,9 @@ export {
   handleFilesDeleted,
   handleHashesDeleted,
   readHashesCollided,
-  findCssDeps
+  findCssDeps,
+  getHash,
+  removeIdFromCacheByFile,
+  removeIdFromCacheByHash,
+  markSuffixDeleted
 };

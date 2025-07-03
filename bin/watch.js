@@ -12,6 +12,7 @@ import { state } from '../shared.js';
 import {
   onRemove,
   onChange,
+  onAdded,
   onRemovePublic,
   onChangePublic,
 } from '../main/devFileReactions.js';
@@ -20,6 +21,7 @@ let timeout;
 let removedTimeout;
 const changedFiles = new Set();
 const removedFiles = new Set();
+const addedFiles = new Set();
 let publicTimeout;
 let publicRemovedTimeout;
 const publicChangedFiles = new Set();
@@ -193,7 +195,7 @@ if (config.copyFiles) {
         const files = Array.from(publicChangedFiles);
         publicChangedFiles.clear();
         enqueue(async () => {
-          onChangePublic(files);
+          await onChangePublic(files);
         });
       }, 100);
     } else if (event === 'unlink') {
@@ -203,7 +205,7 @@ if (config.copyFiles) {
         const files = Array.from(publicRemovedFiles);
         publicRemovedFiles.clear();
         enqueue(async () => {
-          onRemovePublic(files);
+          await onRemovePublic(files);
         });
       }, 100);
     }
@@ -270,13 +272,21 @@ watcher
       //if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
 
       changedFiles.add(filePath);
+
+      if(event === 'add')
+        addedFiles.add (filePath);
+
       clearTimeout(timeout);
       timeout = setTimeout(async () => {
         const files = Array.from(changedFiles);
         changedFiles.clear();
+
+        const filesAdded = Array.from (addedFiles);
+        addedFiles.clear ();
         //await waitForFilesExist(files);
         enqueue(async () => {
-          onChange(files);
+          await onAdded (filesAdded);
+          await onChange(files);
         });
       }, 100);
     } else if (event === 'unlink') {
@@ -286,7 +296,7 @@ watcher
         const files = Array.from(removedFiles);
         removedFiles.clear();
         enqueue(async () => {
-          onRemove(files);
+          await onRemove(files);
         });
       }, 100);
     }
