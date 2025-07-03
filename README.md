@@ -3,6 +3,9 @@
 **This tool has been tested with small tests. It's now being tested on realistic patterns.**
 **Thanks for your patience**
 
+**Test 1: Product Cards**
+[View](https://auto-scope-cards-test.vercel.app/) (`preserveSuffixes` = true, `dontFlatten` = false)
+
 **Latest update:**
 
 1. Persistent number suffixes support. `card-2` will always be `card-2`. Set `preserveSuffixes` to `true` in the config. In a real project this will require permissions to write to the master branch.
