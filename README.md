@@ -11,6 +11,7 @@
 3 cards named `card` - no collision.<br>
 `preserveSuffixes` set to `true` - the names remained constant.<br>
 `dontFlatten` set to `false` - wrote simple non-BEM names, got scoped output.<br>
+Bundler: ⚡ Vite
 
 ## Latest update:
 
