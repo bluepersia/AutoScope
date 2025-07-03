@@ -3,7 +3,8 @@
 **This tool has been tested with small tests. It's now being tested on realistic patterns.**
 **Thanks for your patience**
 
-**Test 1: Product Cards**
+## Test 1: Product Cards
+
 [View](https://auto-scope-cards-test.vercel.app/)
 3 cards named `card` - no collision
 `preserveSuffixes` set to `true` - the names remained constant
