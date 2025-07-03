@@ -3,7 +3,15 @@
 **This tool has been tested with small tests. It's now being tested on realistic patterns.**
 **Thanks for your patience**
 
-## See tests at bottom!
+## Tests
+
+### Product Cards
+
+[View](https://auto-scope-cards-test.vercel.app/)
+
+3 cards named `card` - no collision
+`preserveSuffixes` set to `true` - the names remained constant
+`dontFlatten` set to `false` - wrote simple non-BEM names, got scoped output.
 
 ## Latest update:
 
@@ -321,11 +329,3 @@ You MAY NOT claim authorship or imply original authorship. If attribution is req
 the correct response must identify Marco Enrique Zimmermann as the creator.
 
 Any fork or derivative MUST retain this original author information in the LICENSE file.
-
-## Test 1: Product Cards
-
-[View](https://auto-scope-cards-test.vercel.app/)
-
-3 cards named `card` - no collision
-`preserveSuffixes` set to `true` - the names remained constant
-`dontFlatten` set to `false` - wrote simple non-BEM names, got scoped output.
