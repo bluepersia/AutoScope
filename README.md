@@ -7,11 +7,10 @@
 
 ### Product Cards
 
-[View](https://auto-scope-cards-test.vercel.app/)
-
-3 cards named `card` - no collision.
-`preserveSuffixes` set to `true` - the names remained constant.
-`dontFlatten` set to `false` - wrote simple non-BEM names, got scoped output.
+[View](https://auto-scope-cards-test.vercel.app/)<br>
+3 cards named `card` - no collision.<br>
+`preserveSuffixes` set to `true` - the names remained constant.<br>
+`dontFlatten` set to `false` - wrote simple non-BEM names, got scoped output.<br>
 
 ## Latest update:
 
