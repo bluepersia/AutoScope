@@ -1146,6 +1146,7 @@ async function readFilesAfter() {
   async function readHashesCollided()
   {
     const cssFiles = await globby(`${state.config.inputDir}/**/*.css`);
+    const needWrite = [];
 
     for(const cssFile of cssFiles)
     {
@@ -1159,9 +1160,17 @@ async function readFilesAfter() {
           continue;
 
         if (state.nameCollisions.has (hash))
-          console.log (`🧬 ${cssFile} is colliding! It will have a new suffix on next build.`);
+          needWrite.add (cssFile);
       }
     }
+
+    await fetch('http://localhost:3012/write', {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      method: 'PATCH',
+      body: JSON.stringify(needWrite)
+    });
   }
 
 

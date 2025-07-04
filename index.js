@@ -147,6 +147,8 @@ function initTeamSrc() {
 
   if (state.config.teamGit)
   {
+    state.config.preserveSuffixes = true;
+
     if (state.devMode)
       state.config.getNextHighestNum = false;
 
@@ -805,6 +807,32 @@ function startDevServer() {
       //await fsExtra.copy(state.config.teamRepo, 'dev-temp');
      
       res.end('Read team repo');
+
+    }else if (req.url === '/write')
+    {
+      let body = '';
+      req.on ('data', chunk => body += chunk.toString());
+
+      req.on ('end', async () => 
+      {
+        const cssFiles = JSON.parse (body);
+
+        const htmlDeps = findHtmlDeps(cssFiles);
+        const reactDeps = findHtmlDeps(cssFiles, 'ast');
+        const jsDeps = findHtmlDeps (cssFiles, 'js');
+        
+        const domCssDeps = [...htmlDeps.map (dom => findCssDeps (dom)).flat(), ...reactDeps.map(dom => findCssDeps (dom)).flat(), ...jsDeps.map (dom => findCssDeps (dom)).flat()];
+
+
+        await writeCssAndHtml(
+          Array.from(new Set([...cssFiles, ...domCssDeps])),
+          htmlDeps,
+          reactDeps,
+          jsDeps
+        );
+
+
+      })
     } else if (req.url === '/resolve-build') {
       res.end('Resolved.');
       let body = '';

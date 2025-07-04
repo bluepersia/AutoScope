@@ -512,7 +512,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         const out = removeDummyComment (await state.cssFormatter(result.css));
         await fs.promises.writeFile(file, out);
       }
-    } else {
+    } else if (!state.config.useNumbers) {
       hash = scopeHashFileMap[file];
 
       if (!hash) hash = generateCssModuleHash(file);
@@ -561,10 +561,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
           }
         }
         const idObj = { id: scopeIndex };
-        if(state.config.preserveSuffixes && state.config.teamGit)
-        {
+        
+        if(hash)
           idObj.localHash = hash;
-        }
         else 
           idObj.filePath = file;
 
