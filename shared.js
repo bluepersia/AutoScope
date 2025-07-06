@@ -311,7 +311,7 @@ function removeIdFromCache(scopeName, id) {
 function removeIdFromCacheByFile (scopeName, filePath) {
   if (!state.scopeIDsCache[scopeName]) return;
 
-
+  
   state.scopeIDsCache[scopeName] = state.scopeIDsCache[scopeName].map((obj) =>
     obj.filePath === filePath ? { id:obj.id, empty:true  } : obj
   );

@@ -72,7 +72,9 @@ async function lintCss(cssCode, filepath) {
         "color-function-notation": null,
         "color-hex-length": null,
         "alpha-value-notation":null,
+        "declaration-block-no-redundant-longhand-properties": null,
         "declaration-property-value-no-unknown": null,
+        "shorthand-property-no-redundant-values": null,
         // optional: avoid crashing on unknown at-rules like Tailwind
         'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
@@ -475,7 +477,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       {
         const alreadyId = findIdFromCacheById (fileName, id);
 
-        if(!alreadyId || alreadyId.filePath === file)
+        
+        if(!alreadyId  || alreadyId.filePath === file)
           scopeIndex = id;
       }
     }
@@ -615,7 +618,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
             state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
           else if (selectorsObj.hashedName !== currNameState.to)
           {
-            state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+            const rename = state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+
+            console.log (`🧬 ${rename.from} has been renamed to ${rename.to}, to resolve collision.`);
           }
         }
         selectors[file] = selectorsObj;
@@ -1089,8 +1094,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
   function selectAll (nodes, selector, cb, context)
   {
-    const {isObj, raw, valueObj, scopeNode, nestedScopeNodes} = context;
-    const isScopeSel = (!isObj) && ( raw === `.${valueObj.scopeName}` || raw.startsWith(`.${valueObj.scopeName}.`) || raw.startsWith (`.${valueObj.scopeName}--`) || raw.startsWith (`.${valueObj.scopeName}:`));
+    const {isObj, raw, valueObj, scopeNode, nestedScopeNodes, escapedScope} = context;
+    const isScopeSel = (!isObj) &&  new RegExp(`^\\.${escapedScope}([.:\\-][^\\s]+)?$`).test(raw)
     const matches = cssSelect
       .selectAll(selector, nodes)
       .filter((node) => 
@@ -1201,6 +1206,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
               if (localConfig.dontFlatten) continue;
 
+
+              const escapedScope = valueObj.scopeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
               // 1) build a list of nested scope selectors under this scopeNode
               const nestedSelectors = metaTags
                 .map((t) => `.${t.scopeName}`)
@@ -1237,7 +1245,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
                     raw,
                     valueObj,
                     scopeNode,
-                    nestedScopeNodes
+                    nestedScopeNodes,
+                    escapedScope
                   });
                 }
                 
