@@ -40,7 +40,7 @@ async function lintCss(cssCode, filepath) {
     codeFilename: filepath,
     config: {
       extends: "stylelint-config-standard",
-      customSyntax: 'postcss-safe-parser',
+      //customSyntax: 'postcss-safe-parser',
       rules: {
         'block-no-empty': null,
         'color-no-invalid-hex': true,
@@ -72,7 +72,9 @@ async function lintCss(cssCode, filepath) {
         "color-function-notation": null,
         "color-hex-length": null,
         "alpha-value-notation":null,
+        "declaration-block-no-redundant-longhand-properties": null,
         "declaration-property-value-no-unknown": null,
+        "shorthand-property-no-redundant-values": null,
         // optional: avoid crashing on unknown at-rules like Tailwind
         'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply'] }]
       }
@@ -204,8 +206,15 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       const obj = {
         fileName: path.basename(file, '.css'),
         file,
-        css: await fs.promises.readFile(file, 'utf-8'),
       };
+
+      try 
+      {
+        obj.css = await fs.promises.readFile(file, 'utf-8');
+      }catch(err) 
+      {
+        obj.css = null
+      }
       obj.hash = obj.css.includes('--scope-hash:') && getHash (obj.css);
       obj.id = obj.css.includes('--id:') && getId (obj.css);
 
@@ -428,6 +437,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     let { file, fileName, css, hash, id } = cssFileObj;
 
+    if(css === null)
+      continue;
+
     if(!state.config.teamGit && hash)
     {
       const firstHash = cssFilesObjs.find (o => o.hash === hash);
@@ -475,7 +487,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       {
         const alreadyId = findIdFromCacheById (fileName, id);
 
-        if(!alreadyId || alreadyId.filePath === file)
+        
+        if(!alreadyId  || alreadyId.filePath === file)
           scopeIndex = id;
       }
     }
@@ -512,7 +525,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         const out = removeDummyComment (await state.cssFormatter(result.css));
         await fs.promises.writeFile(file, out);
       }
-    } else {
+    } else if (!state.config.useNumbers) {
       hash = scopeHashFileMap[file];
 
       if (!hash) hash = generateCssModuleHash(file);
@@ -561,10 +574,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
           }
         }
         const idObj = { id: scopeIndex };
-        if(state.config.preserveSuffixes && state.config.teamGit)
-        {
+        
+        if(hash)
           idObj.localHash = hash;
-        }
         else 
           idObj.filePath = file;
 
@@ -616,7 +628,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
             state.renameCache[hash] = { from: undefined, to:selectorsObj.hashedName};
           else if (selectorsObj.hashedName !== currNameState.to)
           {
-            state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+            const rename = state.renameCache[hash] = {from:state.renameCache[hash].to, to:selectorsObj.hashedName};
+
+            console.log (`🧬 ${rename.from} has been renamed to ${rename.to}, to resolve collision.`);
           }
         }
         selectors[file] = selectorsObj;
@@ -1090,8 +1104,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
   function selectAll (nodes, selector, cb, context)
   {
-    const {isObj, raw, valueObj, scopeNode, nestedScopeNodes} = context;
-    const isScopeSel = (!isObj) && ( raw === `.${valueObj.scopeName}` || raw.startsWith(`.${valueObj.scopeName}.`) || raw.startsWith (`.${valueObj.scopeName}--`) || raw.startsWith (`.${valueObj.scopeName}:`));
+    const {isObj, raw, valueObj, scopeNode, nestedScopeNodes, escapedScope} = context;
+    const isScopeSel = (!isObj) &&  new RegExp(`^\\.${escapedScope}([.:\\-][^\\s]+)?$`).test(raw)
     const matches = cssSelect
       .selectAll(selector, nodes)
       .filter((node) => 
@@ -1129,8 +1143,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     htmlDoms = [];
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
-
-  htmlDoms.forEach(async (dom, index) => {
+  try {
+  for (const [index, dom] of htmlDoms.entries()) {
     
     const htmlFilePath = dom.filePath;
     const relativePath = path.relative(state.config.inputDir, htmlFilePath);
@@ -1142,9 +1156,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     const metaTags = state.metaTagMap[dom.filePath];
 
+
     metaTags.forEach((tag) => {
       let scopeId = tag.scopeId;
-
+    
       //const otherMetaTags = metaTags.filter((t) => t != tag);
 
       selectorEntries.forEach(([filePath, valueObj]) => {
@@ -1202,6 +1217,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
               if (localConfig.dontFlatten) continue;
 
+
+              const escapedScope = valueObj.scopeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
               // 1) build a list of nested scope selectors under this scopeNode
               const nestedSelectors = metaTags
                 .map((t) => `.${t.scopeName}`)
@@ -1238,7 +1256,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
                     raw,
                     valueObj,
                     scopeNode,
-                    nestedScopeNodes
+                    nestedScopeNodes,
+                    escapedScope
                   });
                 }
                 
@@ -1249,7 +1268,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         }
       });
     });
-
+ 
     processNodes([dom], '');
 
     
@@ -1300,8 +1319,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       }*/
     // if (config.copyJs)
     //copyFiles (inputDir, outputDir);
-  });
-
+  };
+}catch(err)
+{
+  console.warn (`Error processing HTML DOMs. Check for typos.`);
+}
   if (asts?.length > 0) {
     for (const ast of asts) {
       replaceLinkStylesheetsWithImports(ast);

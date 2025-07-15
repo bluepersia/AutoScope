@@ -143,15 +143,14 @@ async function onRemove(filePaths) {
   for (const cssFile of cssFiles) {
     const scopeName = path.basename (cssFile, '.css');
     const hash = state.scopeHashFileMap[cssFile];
+
     if(state.config.preserveSuffixes)
     {
       if (hash)
         await removeIdFromCacheByHash (scopeName, hash);
     }
-    else 
-    {
       removeIdFromCacheByFile (scopeName, cssFile);
-    }
+    
 
     if(hash)
     {
@@ -210,7 +209,7 @@ async function checkRename (cssFile){
     (root) => {
       root.walkDecls ('--id', decl =>
       {
-        if (!decl.parent.selector.startsWith (`.${cssFile}`))
+        if (!decl.parent.selector.startsWith (`.${path.basename(cssFile, '.css')}`))
           decl.remove ();
       }
       );
