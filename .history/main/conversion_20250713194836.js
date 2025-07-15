@@ -1144,7 +1144,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
   try {
-  for (const [index, dom] of htmlDoms.entries()) {
+  htmlDoms.forEach(async (dom, index) => {
     
     const htmlFilePath = dom.filePath;
     const relativePath = path.relative(state.config.inputDir, htmlFilePath);
@@ -1319,10 +1319,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       }*/
     // if (config.copyJs)
     //copyFiles (inputDir, outputDir);
-  };
+  });
 }catch(err)
 {
-  console.warn (`Error processing HTML DOMs. Check for typos.`);
+  console.warn (`Error processing ${dom.filePath}`);
 }
   if (asts?.length > 0) {
     for (const ast of asts) {

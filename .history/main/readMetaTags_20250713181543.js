@@ -148,7 +148,7 @@ function getAllScopeMetaTags(node, filePath, result = []) {
 
     if (
       child.name === 'meta' &&
-      child.attribs?.name?.startsWith('auto-scope') && child.attribs.content
+      child.attribs?.name?.startsWith('auto-scope')
     ) { /*
       const fileName = path.basename(child.attribs.content, '.css');
     

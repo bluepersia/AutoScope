@@ -1143,8 +1143,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     htmlDoms = [];
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
-  try {
-  for (const [index, dom] of htmlDoms.entries()) {
+
+  htmlDoms.forEach(async (dom, index) => {
     
     const htmlFilePath = dom.filePath;
     const relativePath = path.relative(state.config.inputDir, htmlFilePath);
@@ -1156,7 +1156,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     const metaTags = state.metaTagMap[dom.filePath];
 
-
+    try {
     metaTags.forEach((tag) => {
       let scopeId = tag.scopeId;
     
@@ -1268,7 +1268,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         }
       });
     });
- 
+  }catch(err)
+  {
+    console.warn (`Error processing ${dom.filePath}`);
+  }
     processNodes([dom], '');
 
     
@@ -1319,11 +1322,8 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       }*/
     // if (config.copyJs)
     //copyFiles (inputDir, outputDir);
-  };
-}catch(err)
-{
-  console.warn (`Error processing HTML DOMs. Check for typos.`);
-}
+  });
+
   if (asts?.length > 0) {
     for (const ast of asts) {
       replaceLinkStylesheetsWithImports(ast);

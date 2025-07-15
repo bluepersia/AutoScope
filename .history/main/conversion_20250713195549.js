@@ -1322,7 +1322,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
   };
 }catch(err)
 {
-  console.warn (`Error processing HTML DOMs. Check for typos.`);
+  console.warn (`Error processing ${dom.filePath}`);
 }
   if (asts?.length > 0) {
     for (const ast of asts) {
