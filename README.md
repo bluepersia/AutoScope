@@ -3,7 +3,7 @@
 **This tool is still in testing phase**
 [Multi-page website preview](https://designo-website-sl64.vercel.app/)<br>
 
-[Ideas for the future](https://github.com/bluepersia/AutoScope/raw/master/IDEAS.md);
+[Ideas for the future](https://github.com/bluepersia/AutoScope/raw/master/IDEAS.md)
 
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
