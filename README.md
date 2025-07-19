@@ -15,7 +15,9 @@ Bundler: ⚡ Vite
 
 ## Latest update:
 
-1. Persistent number suffixes support. `card-2` will always be `card-2`. Set `preserveSuffixes` to `true` in the config. In a real project this will require permissions to write to the master branch.
+1. Atomic writes. All-or-nothing, safer for production.
+2. Errors when CSS imports collide without proper IDs assigned - cancels builds.
+3. Pseudo/combinator/modifier bug fixes.
 
 _Feel free to reach out about which features you'd like prioritized for testing. For example, should I focus on dontFlatten: true vs false scenarios first? Understanding common use cases helps me test what matters most!_
 

@@ -13,7 +13,10 @@ import {
   copyFiles,
   findDomsInCache,
   addIdToIdCache,
-  markSuffixDeleted
+  markSuffixDeleted,
+  prepareWrite,
+  endWrite,
+  deleteFile
 } from './shared.js';
 import { writeCssAndHtml } from './main/conversion.js';
 import { readTeamIDs } from './main/teamRepo.js';
@@ -77,7 +80,7 @@ async function init(newConfig, runtimeMp, devMd = false) {
   }
 
   if (state.devMode) {
-    state.config.devMode = true;
+   //state.config.devMode = true;
     state.config.mergeCss = false;
     process.on('SIGINT', cleanUp);
   }
@@ -163,7 +166,7 @@ function initTeamSrc() {
   }
 }
 
-function initLocalStorage ()
+async function initLocalStorage ()
 {
   if (state.config.teamGit || state.config.getNextHighestNum)
   {
@@ -201,7 +204,7 @@ function initLocalStorage ()
           const num = Number (content);
 
           if (seen.has (num))
-            fs.unlinkSync (filePath);
+            await deleteFile (filePath);
           else 
           {
             const idObj = {id:num, localHash:hash};
@@ -209,7 +212,7 @@ function initLocalStorage ()
             if(hash === 'D' || hash.startsWith ('D ('))
               idObj.empty = true;
 
-            addIdToIdCache (dir, idObj);
+            await addIdToIdCache (dir, idObj);
             seen.add (num);
           }
         }
@@ -232,7 +235,7 @@ function initLocalStorage ()
         const content = fs.readFileSync (path.join(state.lsPath, 'highest-nums', file), 'utf-8');
         const highestNum = Number (content);
 
-        addIdToIdCache (path.basename(file, '.suffix'), {id:highestNum, empty:true});
+        await addIdToIdCache (path.basename(file, '.suffix'), {id:highestNum, empty:true});
       }
     }
   }
@@ -707,12 +710,14 @@ async function checkDevMode(cb = () => {}) {
         let data = '';
         res.on('data', (chunk) => (data += chunk));
         res.on('end', async () => {
+          state.devIsOn = true;
           cb(true);
         });
       }
     );
 
     req.on('error', (err) => {
+      state.devIsOn = false;
       cb(false);
     });
 
@@ -855,7 +860,16 @@ function startDevServer() {
           res.end(JSON.stringify({ error: 'Invalid JSON' }));
         }
       });
-    } else {
+    } else if (req.url === '/pause') {
+      await state.watcher.close ();
+      res.writeHead (200);
+      res.end ('Paused');
+    } else if (req.url === '/resume')
+      {
+        state.watcher = state.initWatcher ();
+        res.writeHead (200);
+        res.end ('Resumed');
+      }else {
       res.writeHead(404);
       res.end('Not Found');
     }
@@ -982,31 +996,9 @@ async function build(
     `${state.config.inputDir}/**/*.tsx`,
   ]);  
 
-  if (overwrite && (!state.config.teamGit || (state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir))) {
-    if (fs.existsSync(state.config.outputDir))
-      await fs.promises.rm(state.config.outputDir, {
-        recursive: true,
-        force: true,
-      });
+  await prepareWrite ('build');
 
-    await fs.promises.mkdir(state.config.outputDir, { recursive:true});
-  }
-
-  if (
-    state.config.copyFiles
-  ) {
-    if (Array.isArray(state.config.copyFiles)) {
-      state.config.copyFiles = state.config.copyFiles.filter(
-        (p) => !isPathWithinOrSame (state.config.copyDir, p)
-      );
-      for (const dir of state.config.copyFiles)
-        copyFiles(dir, state.config.copyDir);
-    } else {
-      if (!isPathWithinOrSame (state.config.copyDir, state.config.copyFiles)) 
-      copyFiles(state.config.copyFiles, state.config.copyDir);
-    }
-  }
-  
+  try {
 
   if (state.config.teamSrc) await readTeamIDs();
   //copyGlobalCss();
@@ -1053,6 +1045,42 @@ async function build(
     preBuild
   );
 
+
+  if (
+    state.config.copyFiles
+  ) {
+    if (Array.isArray(state.config.copyFiles)) {
+      state.config.copyFiles = state.config.copyFiles.filter(
+        (p) => !isPathWithinOrSame (state.config.copyDir, p)
+      );
+      for (const dir of state.config.copyFiles)
+        await copyFiles(dir, state.config.copyDir);
+    } else {
+      if (!isPathWithinOrSame (state.config.copyDir, state.config.copyFiles)) 
+      await copyFiles(state.config.copyFiles, state.config.copyDir);
+    }
+  }
+
+
+  if (overwrite && (!state.config.teamGit || (state.config.teamGit !== state.config.outputDir && `${state.config.teamGit}/${state.config.teamSrc[0]}` !== state.config.outputDir))) {
+    if (fs.existsSync(state.config.outputDir))
+      await fs.promises.rm(state.config.outputDir, {
+        recursive: true,
+        force: true,
+      });
+
+    await fs.promises.mkdir(state.config.outputDir, { recursive:true});
+  }
+
+}catch(err)
+{
+  console.error("❌ Build failed:", err);
+  process.exit (1);
+}
+
+  await endWrite ('build');
+
+
   if(state.canWriteMaster)
   {
     if (state.getNextHighestNum) {
@@ -1066,16 +1094,20 @@ async function build(
       }
     }
 
-    if(state.preserveSuffixes)
+    if(state.srcWrites.length > 0)
     {
       const status = await git.status();
       if (status.files.length > 0) {
-        await git.add(...state.cssModified);
-        await git.commit('ID updates');
+        await git.add(...state.inWrites.keys);
+        await git.commit('Src file modifications');
         await git.push('origin', 'master');
       }
     }
 } 
+
+
+
+
 
   if(state.teamGit && state.config.outputDir === state.config.initOutputDir)
     {

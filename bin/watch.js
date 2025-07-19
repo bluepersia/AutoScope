@@ -5,7 +5,7 @@ import chokidar from 'chokidar';
 import { exec } from 'child_process';
 import { build } from '../index.js';
 import loadConfig from './loadConfig.js';
-import { state } from '../shared.js';
+import { state} from '../shared.js';
 
 
 
@@ -54,6 +54,65 @@ const waitForIdle = () =>
     check();
   });*/
 
+
+  let watcher;
+  let watchRoots;
+
+  function initWatcher ()
+    {
+      const w = chokidar.watch(config.inputDir, {
+        ignoreInitial: true,
+        usePolling: true,
+        interval: 200,
+        awaitWriteFinish: {
+          stabilityThreshold: 200,
+          pollInterval: 100,
+        },
+      });
+
+      w
+  .on('all', async (event, filePath) => {
+    if (['add', 'change'].includes(event)) {
+      //if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
+
+      changedFiles.add(filePath);
+
+      if(event === 'add')
+        addedFiles.add (filePath);
+
+      clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        const files = Array.from(changedFiles);
+        changedFiles.clear();
+
+        const filesAdded = Array.from (addedFiles);
+        addedFiles.clear ();
+        //await waitForFilesExist(files);
+        enqueue(async () => {
+          await onAdded (filesAdded);
+          await onChange(files);
+        });
+      }, 100);
+    } else if (event === 'unlink') {
+      removedFiles.add(filePath);
+      clearTimeout(removedTimeout);
+      removedTimeout = setTimeout(() => {
+        const files = Array.from(removedFiles);
+        removedFiles.clear();
+        enqueue(async () => {
+          await onRemove(files);
+        });
+      }, 100);
+    }
+  })
+  .on('error', (err) => console.error('Watcher error:', err));
+
+      
+      return w;
+    }
+
+    state.initWatcher = initWatcher;
+
 // 1. Load your config
 let config = await loadConfig();
 
@@ -87,6 +146,8 @@ if (args.includes('--watch'))
 {
 
 config = state.config;
+
+/*
 const watchArr = [];
 if (config.inputHtml) watchArr.push(...config.inputHtml);
 
@@ -96,7 +157,7 @@ if (config.inputJs) watchArr.push(...config.inputJs);
 
 if (config.inputImages) watchArr.push(...config.inputImages);
 
-const watchRoots = Array.from(
+watchRoots = Array.from(
   new Set(
     watchArr
       .map((pattern) => pattern.split(/[*{]/)[0]) // "src/"
@@ -105,7 +166,7 @@ const watchRoots = Array.from(
       .concat(config.inputDir)
   )
 );
-
+*/
 /*
 if (config.teamRepo)
 {
@@ -166,15 +227,8 @@ watchRoots.forEach((d) => console.log('   ', d));
 */
 
 // 3. Build a single watcher on those roots, with polling & write‑finish:
-const watcher = chokidar.watch(watchRoots, {
-  ignoreInitial: true,
-  usePolling: true,
-  interval: 200,
-  awaitWriteFinish: {
-    stabilityThreshold: 200,
-    pollInterval: 100,
-  },
-});
+
+watcher = state.watcher = initWatcher ();
 
 if (config.copyFiles) {
   const publicWatcher = chokidar.watch(config.copyFiles, {
@@ -211,7 +265,9 @@ if (config.copyFiles) {
     }
   });
 }
+
 watcher.on('ready', () => {
+
   console.log('🚀 Dev mode started');
 });
 
@@ -265,41 +321,4 @@ async function waitForFilesExist(
   return false;
 }
 
-// 5. Wire up all events through our filter
-watcher
-  .on('all', async (event, filePath) => {
-    if (['add', 'change'].includes(event) && shouldTrigger(filePath)) {
-      //if (event === 'add' && filePath.endsWith('.css')) onAddedCss([filePath]);
-
-      changedFiles.add(filePath);
-
-      if(event === 'add')
-        addedFiles.add (filePath);
-
-      clearTimeout(timeout);
-      timeout = setTimeout(async () => {
-        const files = Array.from(changedFiles);
-        changedFiles.clear();
-
-        const filesAdded = Array.from (addedFiles);
-        addedFiles.clear ();
-        //await waitForFilesExist(files);
-        enqueue(async () => {
-          await onAdded (filesAdded);
-          await onChange(files);
-        });
-      }, 100);
-    } else if (event === 'unlink') {
-      removedFiles.add(filePath);
-      clearTimeout(removedTimeout);
-      removedTimeout = setTimeout(() => {
-        const files = Array.from(removedFiles);
-        removedFiles.clear();
-        enqueue(async () => {
-          await onRemove(files);
-        });
-      }, 100);
-    }
-  })
-  .on('error', (err) => console.error('Watcher error:', err));
 }

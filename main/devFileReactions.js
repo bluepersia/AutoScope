@@ -7,7 +7,10 @@ import {
   findCssDeps,
   getHash,
   removeIdFromCacheByHash,
-  removeIdFromCacheByFile
+  removeIdFromCacheByFile,
+  deleteFile,
+  copyFile as copyFileShared,
+  writeFile
 } from '../shared.js';
 import { writeCssAndHtml, readGlobalCss } from './conversion.js';
 import fs from 'fs';
@@ -74,30 +77,41 @@ async function onChange(filePaths) {
 
 async function copyFile(srcPath) {
 
+  await copyFileShared (srcPath, `${state.config.copyDir}/${path.relative (getCopySrcPath (srcPath), srcPath)}`);
+  /*
   await fsExtra.copy(
     srcPath,
     `${state.config.copyDir}/${path.relative(
-      getOutermostDir(srcPath),
+      getCopySrcPath(srcPath),
       srcPath
     )}`,
     { overwrite: true }
-  );
+  );*/
 }
 
 async function unlinkFile(srcPath) {
   const p = `${state.config.copyDir}/${path.relative(
-    getOutermostDir(srcPath),
+    getCopySrcPath(srcPath),
     srcPath
   )}`;
-  if (fs.existsSync(p)) await fs.promises.unlink(p);
+
+  try {
+    await deleteFile (p);
+  }catch(err) {}
+    //if (fs.existsSync(p)) await fs.promises.unlink(p);
 }
 
-function unlink(srcPath) {
+async function unlink(srcPath) {
   const relativePath = path.relative(state.config.inputDir, srcPath);
 
   const outPath = path.join(state.config.outputDir, relativePath);
 
-  if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+  try {
+    await deleteFile (outPath);
+  }catch(err)
+  {
+
+  }
 }
 async function onRemove(filePaths) {
   const {  metaCache, domCache, metaTagMap, mergeCssMap, config } =
@@ -115,18 +129,25 @@ async function onRemove(filePaths) {
   }*/
   //const restFiles = filePaths.filter((file) => isRestFile(file));
 
-  htmlFiles.forEach((htmlFile) => unlink(htmlFile));
+  for(const htmlFile of htmlFiles)
+    await unlink (htmlFile);
+
+ // htmlFiles.forEach((htmlFile) => unlink(htmlFile));
+
+ for(const cssFile of cssFiles)
+  await unlink (cssFile);
+ /*
   cssFiles.forEach((cssFile) => {
     // delete state.runtimeMap[cssFile];
     unlink(cssFile);
 
-    /*for (let i = 0; i < cssScopes.length; i++) {
+   for (let i = 0; i < cssScopes.length; i++) {
       if (cssScopes[i] === path.basename(cssFile, '.css')) {
         cssScopes.splice(i, 1);
         break;
       }
-    }*/
-  });
+    }
+  });*/
 
   Object.entries(metaCache).forEach(([key, val]) => {
     metaCache[key] = val.filter((dom) => !htmlFiles.includes(dom.filePath));
@@ -172,7 +193,11 @@ async function onRemove(filePaths) {
   writeCssAndHtml([], Array.from(domsAffected), Array.from(astsAffected), Array.from (jsAffected));
 }
 
-function getOutermostDir(filePath) {
+function getCopySrcPath(filePath) {
+  if(Array.isArray (state.config.copyFiles))
+    return state.config.copyFiles.find (path => filePath.startsWith (path));
+
+  return state.config.copyFiles;
   const normalized = path.normalize(filePath);
   const parts = normalized.split(path.sep).filter(Boolean);
   return parts[0]; // first directory
@@ -181,7 +206,7 @@ function getOutermostDir(filePath) {
 async function onChangePublic(files) {
   for (const restFile of files) {
     if (
-      getOutermostDir(restFile) !== state.config.inputDir ||
+      getCopySrcPath(restFile) !== state.config.inputDir ||
       isRestFile(restFile)
     )
       copyFile(restFile);
@@ -191,7 +216,7 @@ async function onChangePublic(files) {
 async function onRemovePublic(files) {
   for (const restFile of files) {
     if (
-      getOutermostDir(restFile) !== state.config.inputDir ||
+      getCopySrcPath(restFile) !== state.config.inputDir ||
       isRestFile(restFile)
     )
       unlinkFile(restFile);
@@ -216,7 +241,7 @@ async function checkRename (cssFile){
     },
   ]).process(content, { from: undefined });
   
-  await fs.promises.writeFile (cssFile, result.css);
+  await writeFile (cssFile, result.css);
 
 }
 export { onRemove, onChange, onChangePublic, onRemovePublic, onAdded };

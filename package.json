@@ -1,6 +1,6 @@
 {
   "name": "auto-scope",
-  "version": "0.1.956-alpha",
+  "version": "0.1.957-alpha",
   "author": {
     "name": "Marco Zimmermann",
     "email": "marcoenriquezimmermann@gmail.com",
@@ -57,6 +57,7 @@
     "@babel/parser": "^7.27.5",
     "@babel/traverse": "^7.27.4",
     "@babel/types": "^7.27.6",
+    "@typescript-eslint/parser": "^8.37.0",
     "chokidar": "^4.0.3",
     "concurrently": "^9.2.0",
     "css-select": "^5.1.0",

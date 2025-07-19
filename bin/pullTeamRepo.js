@@ -12,7 +12,7 @@ import {
   build,
   initLocalStorage,
 } from '../index.js';
-import { isGitError, state, renameFile, getPrePullState, readFilesAfter, handleFilesDeleted, handleHashesDeleted, readHashesCollided } from '../shared.js';
+import { isGitError, state, getPrePullState, readFilesAfter, handleFilesDeleted, handleHashesDeleted, readHashesCollided, writeFile, prepareWrite, endWrite } from '../shared.js';
 import { readTeamIDs, syncTeamRepo } from '../main/teamRepo.js';
 import { default as inquirer } from 'inquirer';
 import fsExtra from 'fs-extra';
@@ -76,7 +76,7 @@ args.forEach((arg, index) => {
 await initCombinatorFlattening(config);
 await initFormatters();
 initTeamSrc();
-initLocalStorage ();
+await initLocalStorage ();
 state.config.initOutputDir = state.config.outputDir;
 state.config.copyFiles = false;
 
@@ -299,8 +299,9 @@ async function main(isRetry = false) {
   if (collisionsOccured.length > 0) {
     //await fsExtra.remove('merge');
    // await myGit.deleteLocalBranch('merge');
-    await readTeamIDs ();
+    //await readTeamIDs ();
     
+    prepareWrite ('new-hash-collisions');
     for(const cssFile of collisionsOccured)
     {
       const root = postcss.parse(css, { from: cssFile });
@@ -316,9 +317,11 @@ async function main(isRetry = false) {
         });
       });
       const out = await state.cssFormatter(root.toString());
-      await fs.writeFile(cssFile, out, 'utf-8');
+      await writeFile (cssFile, out, 'src');
     }
   }
+
+  await endWrite ('new-hash-collisions');
 
   await teamGit.checkout(currentBranch.team);
 

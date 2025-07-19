@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import parser from 'recast/parsers/babel.js';
+import parser from 'recast/parsers/typescript.js';
 import generateModule from '@babel/generator';
 const generate = generateModule.default;
 import traverseModule from '@babel/traverse';

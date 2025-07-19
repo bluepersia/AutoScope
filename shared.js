@@ -12,6 +12,7 @@ import { LocalStorage } from 'node-localstorage';
 import { default as inquirer } from 'inquirer';
 const lsPath = './~auto-scope';
 import { globby } from 'globby';
+import chokidar from 'chokidar';
 
 
 const cwd = process.cwd();
@@ -137,7 +138,7 @@ function resolveConfigFor(filePath, baseConfig, root) {
   return cfg;
 }
 
-function addIdToIdCache(scopeName, idObj) {
+async function addIdToIdCache(scopeName, idObj) {
 
   let arr = state.scopeIDsCache[scopeName];
   if (!arr) arr = state.scopeIDsCache[scopeName] = [];
@@ -181,11 +182,11 @@ function addIdToIdCache(scopeName, idObj) {
         arr[currIndex] = idObj;
         
         if(currObj.localHash && idObj.localHash)
-          fs.unlinkSync (path.join(state.lsPath, state.suffixesPath, scopeName, `${currObj.localHash}.suffix`))
+          await deleteFile (path.join(state.lsPath, state.suffixesPath, scopeName, `${currObj.localHash}.suffix`))
         
       }
       
-      postIdAdd (scopeName, idObj);
+      await postIdAdd (scopeName, idObj);
 
       return true;
     }
@@ -204,27 +205,26 @@ function addIdToIdCache(scopeName, idObj) {
   else 
     arr.unshift (idObj);
 
-  postIdAdd (scopeName, idObj, insertAtEnd);
+  await postIdAdd (scopeName, idObj, insertAtEnd);
 
   return true;
 }
 
-function postIdAdd (scopeName, idObj, addHighest = false)
+async function postIdAdd (scopeName, idObj, addHighest = false)
 {
   if(idObj.localHash || idObj.hash)
-    writeSuffixToFile (scopeName, idObj.hash || idObj.localHash, idObj.id);
+    await writeSuffixToFile (scopeName, idObj.hash || idObj.localHash, idObj.id);
   else if (addHighest && idObj.filePath && state.config.getNextHighestNum)
-    fs.writeFileSync (path.join(state.lsPath, 'highest-nums', `${scopeName}.suffix`), idObj.id.toString())
+    await writeFile (path.join(state.lsPath, 'highest-nums', `${scopeName}.suffix`), idObj.id.toString())
   
 }
 
-function writeSuffixToFile(scopeName, hash, id)
+async function writeSuffixToFile(scopeName, hash, id)
 {
   if(!state.config.teamGit || !state.config.preserveSuffixes || !state.config.useNumbers) return;
   
   const outPath = path.join (state.lsPath, state.suffixesPath, scopeName, `${hash}.suffix`);
-  fs.mkdirSync (path.dirname (outPath), {recursive:true});
-  fs.writeFileSync (outPath, id.toString());
+  await writeFile(outPath, id.toString());
 }
 
 function addIdToIdCacheEnd(scopeName, idObj) {
@@ -346,7 +346,7 @@ async function renameWithAutoSuffix(oldPath, newPath) {
       attempt++;
     } catch {
       // File does not exist — safe to rename
-      await fs.promises.rename(oldPath, candidate);
+      await renameFile (oldPath, candidate);
       return candidate;
     }
   }
@@ -537,7 +537,7 @@ function findCssDeps (dom)
   return deps;
 }
 
-function copyFiles(inputDir, outputDir) {
+async function copyFiles(inputDir, outputDir) {
   function IsSupported(filePath) {
     return inputDir !== state.config.inputDir || isRestFile(filePath); // Assume this is your own file type checker
   }
@@ -560,7 +560,7 @@ function copyFiles(inputDir, outputDir) {
     return false;
   }
 
-  function copyRecursive(src, dest) {
+  async function copyRecursive(src, dest) {
     const items = fs.readdirSync(src, { withFileTypes: true });
 
     for (const item of items) {
@@ -571,13 +571,15 @@ function copyFiles(inputDir, outputDir) {
         if (!item.name.includes ('.git'))
         {
           if (containsSupportedFiles(srcPath)) {
-            fs.mkdirSync(destPath, { recursive: true });
-            copyRecursive(srcPath, destPath);
+            await copyFile (srcPath, destPath);
+            //fs.mkdirSync(destPath, { recursive: true });
+            //copyRecursive(srcPath, destPath);
           }
         }
       } else if (IsSupported(srcPath) && !item.name.includes ('.DS_Store')) {
-        fs.mkdirSync(path.dirname(destPath), { recursive: true });
-        fs.copyFileSync(srcPath, destPath);
+        await copyFile (srcPath, destPath);
+        //fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        //fs.copyFileSync(srcPath, destPath);
       }
     }
   }
@@ -587,8 +589,8 @@ function copyFiles(inputDir, outputDir) {
   }
 
   if (containsSupportedFiles(inputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-    copyRecursive(inputDir, outputDir);
+    //fs.mkdirSync(outputDir, { recursive: true });
+    await copyRecursive(inputDir, outputDir);
   } else {
    // console.log(`No supported files found in: ${inputDir}`);
   }
@@ -729,7 +731,108 @@ const insertedTagsIndent = lastLineIndentMatch ? lastLineIndentMatch[1] : '  ';
     data: fullInsertion,
   });
 }
+
+/* ATTRIBUTES */
+const attribNodes = new Set([
+  ...selectAll('[id]', dom),
+  ...selectAll('[class]', dom),
+  ...selectAll('[data-scope]', dom),
+  ...selectAll('[data-scope-hash]', dom),
+  ...selectAll ('[for]', dom)
+]);
+
+
+for (const node of attribNodes) {
+  if (node.startIndex == null || node.endIndex == null) continue;
+
+  let start = node.startIndex;
+
+  while (start < src.length && src[start] !== '<') start++;
+
+  let end = start;
+
+  // Find end of opening tag
+  while (end < src.length && src[end] !== '>') end++;
+  end++; // include '>'
+
+  let tagText = src.slice(start, end);
+  let patched = false;
+
+  // --- ID
+  const id = node.attribs.id;
+  const idMatch = tagText.match(/id\s*=\s*(['"])(.*?)\1/i);
+  if (idMatch && id !== idMatch[2]) {
+    tagText = tagText.replace(idMatch[0], `id=${idMatch[1]}${id}${idMatch[1]}`);
+    patched = true;
+  }
+
+  // --- FOR
+  const htmlFor = node.attribs.for;
+  const forMatch = tagText.match(/for\s*=\s*(['"])(.*?)\1/i);
+  if (forMatch && htmlFor !== forMatch[2])
+  {
+    tagText = tagText.replace(forMatch[0], `for=${forMatch[1]}${htmlFor}${forMatch[1]}`);
+    patched = true;
+  }
+  // --- CLASS
+  const cls = node.attribs.class;
+  const classMatch = tagText.match(/class\s*=\s*(['"])(.*?)\1/i);
+  if (cls)
+  {
+  if (!classMatch || cls !== classMatch[2]) {
+
+    if(classMatch)
+      tagText = tagText.replace(classMatch[0], `class=${classMatch[1]}${cls}${classMatch[1]}`);
+    else 
+    {
+      tagText = tagText.replace(/>$/, ` class="${cls}">`);
+    }
+    patched = true;
+  }
+  }
+  // --- data-scope
+  const scope = node.attribs['data-scope'];
+  const scopeMatch = tagText.match(/data-scope\s*=\s*(['"])(.*?)\1/i);
+  if (scope) {
+    if (!scopeMatch || scopeMatch[2] !== scope) {
+      if (scopeMatch) {
+        tagText = tagText.replace(scopeMatch[0], `data-scope=${scopeMatch[1]}${scope}${scopeMatch[1]}`);
+      } else {
+        tagText = tagText.replace(/>$/, ` data-scope="${scope}">`);
+      }
+      patched = true;
+    }
+  } else if (scopeMatch) {
+    tagText = tagText.replace(scopeMatch[0], "").replace(/\s{2,}/g, " ").replace(/\s*>$/, ">");
+    patched = true;
+  }
+
+  // --- data-scope-hash
+  const hash = node.attribs['data-scope-hash'];
+  const hashMatch = tagText.match(/data-scope-hash\s*=\s*(['"])(.*?)\1/i);
+  if (hash) {
+    if (!hashMatch || hashMatch[2] !== hash) {
+      if (hashMatch) {
+        tagText = tagText.replace(hashMatch[0], `data-scope-hash=${hashMatch[1]}${hash}${hashMatch[1]}`);
+      } else {
+        tagText = tagText.replace(/>$/, ` data-scope-hash="${hash}">`);
+      }
+      patched = true;
+    }
+  } else if (hashMatch) {
+    tagText = tagText.replace(hashMatch[0], "").replace(/\s{2,}/g, " ").replace(/\s*>$/, ">");
+    patched = true;
+  }
+
+  if (patched) {
+    patches.push({ start, end, data: tagText });
+  }
+}
+
+
+
 /* ----- 2-C  ·  REWRITE class ATTRIBUTES LOSSLESSLY ----- */
+/*
 const classNodes = selectAll("[class]", dom);
 for (const node of classNodes) {
   if (node.startIndex == null || node.endIndex == null ) continue;
@@ -812,8 +915,9 @@ for (const node of classNodes) {
     data: patchedTag,
   });
 }
-
+*/
 /* ----- 2-C  ·  REWRITE id ATTRIBUTES LOSSLESSLY ----- */
+/*
 const idNodes = selectAll("[id]", dom);
 for (const node of idNodes) {
   if (node.startIndex == null || node.endIndex == null ) continue;
@@ -827,7 +931,7 @@ for (const node of idNodes) {
   
   // Extract just the opening tag
   const tagText = src.slice(start, end);
-  
+
   // Match and patch only the class attribute
   const match = tagText.match(/id\s*=\s*(['"])(.*?)\1/i);
   if (!match) continue;
@@ -853,8 +957,9 @@ for (const node of idNodes) {
     data: patchedTag,
   });
 }
-
+*/
 /* ----- 2-C  ·  REWRITE for ATTRIBUTES LOSSLESSLY ----- */
+/*
 const forNodes = selectAll("[for]", dom);
 for (const node of forNodes) {
   if (node.startIndex == null || node.endIndex == null ) continue;
@@ -893,7 +998,7 @@ for (const node of forNodes) {
     data: patchedTag,
   });
 }
-
+*/
 
  /* ----- 2-D  ·  APPLY PATCHES LEFT-TO-RIGHT ----- */
  patches.sort((a, b) => a.start - b.start);
@@ -915,7 +1020,7 @@ function isGitError(err) {
   return err?.git === true || /fatal:|pathspec|repository|git|Git|stash|commit/i.test(err?.message || '');
 }
 
-
+/*
 async function renameFile(file, content, to)
 {
   const fileName = path.basename (file, '.css');
@@ -929,7 +1034,7 @@ async function renameFile(file, content, to)
 
   await fs.promises.writeFile (file.replace (`${fileName}.css`, `${to}.css`), replaced, 'utf-8');
   await fs.promises.unlink (file);
-}
+}*/
 
 function isSelectorTargetClass (selector, targetClass)
 {
@@ -1078,7 +1183,7 @@ async function readFilesAfter() {
     if (confirmDelete) {
       for (const fileRel of filesDeleted) {
         try {
-          await fs.promises.unlink(fileRel);
+          await deleteFile(fileRel);
           console.log(`Deleted file: ${fileRel}`);
         } catch (err) {
           console.warn(`Failed to delete ${fileRel}: ${err.message}`);
@@ -1133,7 +1238,7 @@ async function readFilesAfter() {
           if (confirmDelete) {
             for (const deletedFile of deletedFiles) {
               try {
-                await fs.promises.unlink(deletedFile);
+                await deleteFile(deletedFile);
               } finally {
               }
             }
@@ -1179,7 +1284,120 @@ async function readFilesAfter() {
     return hashMatch ? hashMatch[1] : false;
   }
 
+
+  function prepareWrite (id)
+  {
+    if (state.writePrepared)
+      return;
+
+    state.writes = [];
+    state.writePrepared = id;
+    state.srcWrites = [];
+  }
+
+  async function watchPause ()
+  {
+    try {
+      const res = await fetch ("http://localhost:3012/pause");
+    }catch (err)
+    {
+    }
+  }
+  async function watchResume ()
+  {
+    try {
+      const res = await fetch ("http://localhost:3012/resume");
+    }catch (err)
+    {
+    }
+  }
+  async function endWrite (id)
+  {
+    if (state.writePrepared !== id)
+      return;
+
+    await watchPause ();
+
+    const srcWrites = state.writes.filter (({context}) => context === 'src');
+    for (const {action, filePath, content} of srcWrites)
+    {
+      await fsAction (action, filePath, content);
+    }
+    state.srcWrites = srcWrites;
+    await watchResume ();
+    
+    const outWrites = state.writes.filter (({context}) => context !== 'src');
+    for(const {action, filePath, content} of outWrites)
+    {
+      await fsAction (action, filePath, content);
+    }
+
+    state.writePrepared = null;
+  }
+
+  async function fileAction (action, context, filePath, content)
+  {
+    if(state.writePrepared)
+    {
+      state.writes.push ({action, context, filePath, content});
+      return;
+    }
+    
+    if (context === 'src')
+      await watchPause ();
+
+    await fsAction (action, filePath, content);
+
+    if(context === 'src')
+      await watchResume ();
+  }
+
+  async function writeFile (filePath, content, context = false)
+  {
+    await fileAction ('write', context, filePath, content);
+  }
+
+  async function renameFile (filePath, newPath, context = false)
+  {
+    await fileAction ('rename', context, filePath, content);
+  }
+
+  async function deleteFile (filePath, context = false)
+  {
+    await fileAction ('delete', context, filePath, null);
+  }
   
+  async function copyFile (filePath, outPath)
+  {
+    await fileAction ('copy', false, filePath, outPath);
+  }
+
+  async function fsAction (action, filePath, content)
+  {
+    switch(action){
+      case "write":
+        await fs.promises.mkdir (path.dirname (filePath), {recursive:true});
+        await fs.promises.writeFile (filePath, content, 'utf8');
+      break;
+
+      case "rename":
+        await fs.promises.rename (filepath, content);
+      break;
+
+      case "delete":
+        await fs.promises.unlink (filePath);
+      break;
+
+      case "copy":
+        await fs.promises.mkdir (path.dirname (content), {recursive:true});
+        await fs.promises.copyFile (filePath, content);
+        break;
+    }
+  }
+
+
+  
+
 export {
   state,
   setConfig,
@@ -1216,5 +1434,10 @@ export {
   getHash,
   removeIdFromCacheByFile,
   removeIdFromCacheByHash,
-  markSuffixDeleted
+  markSuffixDeleted,
+  endWrite,
+  prepareWrite,
+  writeFile,
+  deleteFile,
+  copyFile
 };

@@ -9,6 +9,7 @@ import { globby } from 'globby';
 import fs from 'fs/promises'
 import fsExtra from 'fs-extra';
 import {default as inquirer} from 'inquirer';
+import {writeFile} from '../shared.js';
 
 const myGit = simpleGit(process.cwd());
 const teamGit = simpleGit(`${process.cwd()}/${config.teamGit}`);
@@ -98,7 +99,8 @@ async function main ()
                     
                 }]).process (css, {from:undefined});
 
-                await fs.writeFile (cssFile, result.css);
+                await writeFile (cssFile, result.css);
+                //await fs.writeFile (cssFile, result.css);
                 targetCssFile = cssFile;
                 break;
         }
@@ -172,7 +174,7 @@ async function updateSnapshot ()
         }
     ]).process (snapCss, {from:undefined});
 
-    await fs.writeFile (targetCssFile, result.css, 'utf-8');
+    await writeFile (targetCssFile, result.css);
 
     await myGit.add (targetCssFile);
     await myGit.commit ('Snapshot hash update');
@@ -220,7 +222,7 @@ try {
 
         }]).process (css, {from:undefined});
 
-      await fs.promises.writeFile (cssFile, result.css);
+      await writeFile (cssFile, result.css);
   }
 
   await myGit.add ('.');
@@ -229,7 +231,7 @@ try {
   await teamGit.commit ('Hashes stripped');
   
   for(const {cssFile, css} of cssFilesStripped)
-    await fs.promises.writeFile (cssFile, css);
+    await writeFile (cssFile, css);
   
   await myGit.add ('.');
   await teamGit.add ('.');

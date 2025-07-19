@@ -14,7 +14,11 @@ import {
   serializeHtml,
   isSelectorTargetClass,
   getHash,
-  markSuffixDeleted
+  markSuffixDeleted,
+  endWrite,
+  prepareWrite,
+  writeFile,
+  copyFile
 } from '../shared.js';
 import { writeToAST, replaceLinkStylesheetsWithImports } from './react.js';
 import {writeToAST as writeToASTJs} from './jsParser.js';
@@ -107,7 +111,6 @@ function findIdFromCacheById(scopeName, id) {
 async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => {}) {
   const cssConfigs = {};
 
- 
 
   const {
     runtimeMap,
@@ -233,8 +236,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
    
     let outPath = path.join(outputDir, relativePath);
     
-    await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-    await fs.promises.copyFile(globalCssFile, outPath);
+    await copyFile (globalCssFile, outPath);
 
   }
 
@@ -360,7 +362,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     function flatten(selector, flattenPseudo = true) {
       let chain = splitSelectorIntoSegments(selector, localConfig.flattenCombis);
-      
+   
       if (chain.length <= 1)
       {
         
@@ -370,8 +372,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
           
         ), localConfig.flattenCombis));
       }
+
       //chain = chain.map((seg) => replaceDotsExceptFirst(seg));
-        
+    
       let flatChain = replaceDoubleUnderscoreInArray(
         chain.map((seg, index) => {
             seg =
@@ -384,19 +387,21 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
           return stripSpaces(
             seg)
         }));
-
-
+        
       chain = chain.map((seg) => stripPseudoSelectors (seg.replace (`.${fileName} `, '')));
       
       flatChain = flatChain.map (seg => replaceDotsExceptFirst (replaceCombinators (seg, localConfig.flattenCombis), ''))
 
-      const flat = flatChain.join (' ');
+      
 
+      const flat = flatChain.join (' ').replaceAll (' :', ':');
+       
       if (chain[0] === `.${fileName}`)
         {
           chain = chain.slice (1);
           flatChain = flatChain.slice (1);
         }
+     
       return {
         flat,
         chain,
@@ -453,7 +458,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     let outPath = path.join(outputDir, relativePath);
     
 
-    if (state.config.devMode)
+    if (state.devMode)
       {
         try {
           await lintCss (css, file);
@@ -519,11 +524,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
             },
           ]).process(css, { from: undefined });
         } catch (err) {
-          console.log('Attaching hash to file error');
+          handleError ('Attaching hash to file error', err);
         }
         css = result.css;
         const out = removeDummyComment (await state.cssFormatter(result.css));
-        await fs.promises.writeFile(file, out);
+        await writeFile (file, out, 'src');
+        //await fs.promises.writeFile(file, out);
       }
     } else if (!state.config.useNumbers) {
       hash = scopeHashFileMap[file];
@@ -569,8 +575,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
             attachHash(root, fileName, hash, localConfig);
             const out = removeDummyComment (await state.cssFormatter(root.toString()));
-            if (state.config.devMode) delayedWrite = out;
-            else await fs.promises.writeFile(file, out, 'utf-8');
+            await writeFile (file, out, 'src');
+            //if (state.config.devMode) delayedWrite = out;
+            //else await fs.promises.writeFile(file, out, 'utf-8');
           }
         }
         const idObj = { id: scopeIndex };
@@ -586,16 +593,17 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         else 
           // idObj.filePath = file;*/
 
-        const added = addIdToIdCache(fileName, idObj);
+        const added = await addIdToIdCache(fileName, idObj);
        
         if(added && state.config.preserveSuffixes && !state.config.teamGit && id !== idObj.id)
         {
           attachHash(root, fileName, scopeIndex, localConfig, 'id');
           const out = await state.cssFormatter(root.toString());
-          await fs.promises.writeFile(file, out, 'utf-8');
-          state.cssModified.add (file);
-          if(state.devMode)
-            return;
+          await writeFile (file, out, 'src');
+          //await fs.promises.writeFile(file, out, 'utf-8');
+          //state.cssModified.add (file);
+          //if(state.devMode)
+            //return;
         }
 
         root.walkDecls ('--id', decl => decl.remove());
@@ -694,8 +702,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     ]).process(css, { from: undefined });
     } catch(err)
     {
-      console.error (`Failed to process file: ${file}`);
-      console.error (err);
+      handleError (`Failed to process file: ${file}`, err);
       continue;
     }
     rulesArr = rulesArr.map((r) => (r.name === 'media' ? r.clone() : r));
@@ -845,11 +852,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       if (fileFound)
         delete mergeCssMap[file];
 
-      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.promises.writeFile(outPath, out);
+      //await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      //await fs.promises.writeFile(outPath, out);
+      await writeFile (outPath, out);
     }
 
-    if (delayedWrite) await fs.promises.writeFile(file, delayedWrite, 'utf-8');
+    //if (delayedWrite) await fs.promises.writeFile(file, delayedWrite, 'utf-8');
   }
 
   if (state.config.teamGit)
@@ -869,9 +877,10 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     mergedOutpath = path.join(state.config.outputDir, config.mergeCss);
 
-    await fs.promises.mkdir(path.dirname(mergedOutpath), { recursive: true });
+    //await fs.promises.mkdir(path.dirname(mergedOutpath), { recursive: true });
     mergedCss = removeDummyComment (await state.cssFormatter(mergedCss));
-    await fs.promises.writeFile(mergedOutpath, mergedCss);
+    //await fs.promises.writeFile(mergedOutpath, mergedCss);
+    await writeFile (mergedOutpath, mergedCss);
   }
 
   function processNodes(
@@ -1064,24 +1073,50 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     }
     return false;
   };
+
+  function onSelectSegCb (match)
+  {
+    
+  }
+
   function selectSeg (index, node, context, selectAllContext)
   {
     const {chain, flatChain} = context;
 
     if (index >= chain.length)
       return;
+
+    let chainSeg = chain[index];
+    let flatSeg = flatChain[index];
     
-    selectAll (node, `:scope ${chain[index]}`, match => 
+    selectAll (node, `:scope ${chainSeg}`, match => 
     {
       if(!match.attribs.flatClasses)
         match.attribs.flatClasses = [];
 
-     
-      if (flatChain[index])
-      match.attribs.flatClasses.push (flatChain[index]);
+      
+      if (flatSeg)
+      match.attribs.flatClasses.push (flatSeg);
       selectSeg (index + 1, match, { chain, flatChain }, selectAllContext)
     }
-    , selectAllContext)
+    , selectAllContext, () =>
+    {
+
+      //On fail
+      if (chainSeg.includes ('--'))
+      {
+        chainSeg = chainSeg.split ('--')[0];
+        flatSeg = flatSeg.split ('--')[0];
+        selectAll (node, `:scope ${chainSeg}`, match => {
+          if (!match.attribs.flatClasses)
+            match.attribs.flatClasses = [];
+
+          if (flatSeg)
+            match.attribs.flatClasses.push (flatSeg);
+          selectSeg (index + 1, match, {chain, flatChain}, selectAllContext);
+        }, selectAllContext)
+      }
+    })
   }
 
   function onSelect (match, flat)
@@ -1094,6 +1129,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     function getAfterDot(str) {
       return str.includes('.') ? str.split('.')[1] : str;
     }
+    
 
     if (!match.attribs.flatClasses)
       match.attribs.flatClasses = [];
@@ -1102,8 +1138,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     );
   }
 
-  function selectAll (nodes, selector, cb, context)
+  function selectAll (nodes, selector, cb, context, noResultCb = () => {})
   {
+    
     const {isObj, raw, valueObj, scopeNode, nestedScopeNodes, escapedScope} = context;
     const isScopeSel = (!isObj) &&  new RegExp(`^\\.${escapedScope}([.:\\-][^\\s]+)?$`).test(raw)
     const matches = cssSelect
@@ -1115,6 +1152,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     matches.forEach((match) => {
       cb (match);
       })
+
+      if(matches.length <= 0)
+        noResultCb ();
   }
   const selectorEntries = Object.entries(selectors);
 
@@ -1143,9 +1183,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
     htmlDoms = [];
     for (const ast of asts) htmlDoms.push(...ast.doms);
   }
-  try {
+  const totalCollisions = [];
+ 
   for (const [index, dom] of htmlDoms.entries()) {
     
+    try {
     const htmlFilePath = dom.filePath;
     const relativePath = path.relative(state.config.inputDir, htmlFilePath);
     const outPath = path.join(outputDir, relativePath);
@@ -1156,10 +1198,25 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     const metaTags = state.metaTagMap[dom.filePath];
 
+    const collisionsDetected = new Set();
 
     metaTags.forEach((tag) => {
       let scopeId = tag.scopeId;
-    
+
+      if (!scopeId && !collisionsDetected.has (tag.scopeName))
+        {
+          const otherWithoutId = metaTags.find (mt => mt !== tag && mt.scopeName === tag.scopeName && !mt.scopeId);
+          if (otherWithoutId)
+          {
+            if(process.env.CI === 'true')
+              totalCollisions.push ({scopeName: tag.scopeName, filePath:dom.filePath});
+            else 
+              console.warn (`🔶 There is more than 1 '${tag.scopeName}.css' import in ${dom.filePath} without scope ID defined.`);
+            
+            collisionsDetected.add (tag.scopeName);
+          }
+        }
+
       //const otherMetaTags = metaTags.filter((t) => t != tag);
 
       selectorEntries.forEach(([filePath, valueObj]) => {
@@ -1176,10 +1233,18 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
                     `${state.config.outputDir}/`
                   )
             );
-          const scopeNodes = cssSelect.selectAll(
-            `.${valueObj.scopeName}`,
-            dom.children
-          );
+
+          const explicitBlockNodes = cssSelect.selectAll (`.${valueObj.scopeName}[data-block]`, dom.children);
+
+          let scopeNodes;
+          
+          if (explicitBlockNodes.length > 0)
+            scopeNodes = explicitBlockNodes;
+          else 
+            scopeNodes = cssSelect.selectAll(
+              `.${valueObj.scopeName}`,
+              dom.children
+            );
           
           const localConfig = cssConfigs.hasOwnProperty(filePath)
             ? cssConfigs[filePath]
@@ -1247,6 +1312,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
                   
                   const chain = flat.chain;
                   const flatChain = flat.flatChain;
+                  
                   selectSeg (0, scopeNode, { chain, flatChain}, {isObj, raw, valueObj, scopeNode, nestedScopeNodes});
                 }
                 else 
@@ -1273,10 +1339,11 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
 
     
     if (!dom.isJs && (!asts || asts.length <= 0)) {
-      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      //await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
       const raw = serializeHtml (dom);
       const out = await state.htmlFormatter(raw);
-      await fs.promises.writeFile(outPath, out);
+      await writeFile (outPath, out);
+      //await fs.promises.writeFile(outPath, out);
     } 
     /*
     for (const [index, tagContent] of relativePaths.entries())
@@ -1319,11 +1386,12 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       }*/
     // if (config.copyJs)
     //copyFiles (inputDir, outputDir);
+  }catch(err)
+  {
+    handleError (`Error processing DOM ${dom.filePath}.`, err);
+  }
   };
-}catch(err)
-{
-  console.warn (`Error processing HTML DOMs. Check for typos.`);
-}
+
   if (asts?.length > 0) {
     for (const ast of asts) {
       replaceLinkStylesheetsWithImports(ast);
@@ -1333,8 +1401,9 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         : await state.tsxFormatter(raw);
       const relativePath = path.relative(state.config.inputDir, ast.filePath);
       const outPath = path.join(outputDir, relativePath);
-      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.promises.writeFile(outPath, out, 'utf8');
+      await writeFile (outPath, out);
+      //await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      //await fs.promises.writeFile(outPath, out, 'utf8');
     }
   }
   if (js?.length > 0)
@@ -1345,10 +1414,21 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
       const out = j.filePath.endsWith ('.js') ? await state.jsFormatter (raw) : await state.tsFormatter (raw);
       const relativePath = path.relative(state.config.inputDir, j.filePath);
       const outPath = path.join(outputDir, relativePath);
-      await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.promises.writeFile(outPath, out, 'utf8');
+      await writeFile (outPath, out);
+      //await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+      //await fs.promises.writeFile(outPath, out, 'utf8');
     }
   }
+
+  if (totalCollisions.length > 0)
+    {
+      for(const {scopeName, filePath} of totalCollisions)
+        console.error (`🔴  There is more than 1 '${scopeName}.css' import in ${filePath} without scope ID defined.`)
+      
+      throw Error ('CSS import collisions');
+    }
+
+  
   const runtimeMapKeys = Object.keys(runtimeMap);
 
   if (runtimeMapKeys.length > 0) {
@@ -1367,7 +1447,7 @@ async function writeCssAndHtml(cssFiles, htmlDoms, asts, js, preWriteCb = () => 
         : state.config.writeRuntimeMap;
 
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
-    await fs.promises.writeFile(outPath, JSON.stringify(runtimeMap, null, 2));
+    await writeFile(outPath, JSON.stringify(runtimeMap, null, 2));
   }
 }
 function prefixSelectorSegment(segment, selectorsObj) {
@@ -1381,18 +1461,24 @@ function prefixSelectorSegment(segment, selectorsObj) {
     const [fullMatch, combinator, space] = combinatorMatch;
     const rest = segment.slice(fullMatch.length).trimStart();
     if(rest)
+    {
+      if(rest.startsWith ('.'))
     return `${combinator}${space}${prefix}${rest}`;
+    return `${combinator}${space}${rest}`;
+    }
   else 
     return combinator;
   }else {
     // No combinator, just prefix it
+    if (segment.startsWith ('.'))
     return `${prefix}${segment}`;
+  return segment;
   }
 }
 
 
 function splitSelectorIntoSegments(sel, flattenCombis = []) {
-  const tokenPattern = /::?[^\s>+~*|]+(?:\([^\)]*\))?|[>+~*|]|\S+/g;
+  const tokenPattern = /\s*::?[^\s>+~*|]+(?:\([^\)]*\))?|[>+~*|]|\S+/g;
   const tokens = sel.match(tokenPattern) || [];
 
   const segments = [];
@@ -1422,10 +1508,20 @@ function splitSelectorIntoSegments(sel, flattenCombis = []) {
           segments.push (tok);
       }
     } else if (tok.includes(':')) {
+      
       curr = curr ? `${curr} ${tok}` : tok;
-      segments.push(curr.trim());
+      segments.push(curr);
       curr = '';
-    } else {
+    }
+    else if (/--/.test (tok))
+    {
+      if (curr) {
+        segments.push(curr.trim());
+        curr = '';
+      }
+      segments.push(tok);
+    }
+    else {
       curr = curr ? `${curr} ${tok}` : tok;
     }
   }
@@ -1465,7 +1561,7 @@ function replaceDotsExceptFirst(input, replacement = '') {
 }
 
 function stripSpaces(selector) {
-  return selector.replace(/(?<![>+~*~|])\s+(?![>+~*~|])/g, '__');
+  return selector.replace(/(?<![>+~*~|:])\s+(?![>+~*~|:])/g, '__');
 }
 
 function stripPseudoSelectors(selector) {
@@ -1563,6 +1659,28 @@ async function readGlobalCss() {
     findHtmlDeps(cssDeps),
     findHtmlDeps(cssDeps, true)
   );
+}
+
+
+function handleError (msg, err)
+{
+  if (state.devMode)
+  {
+    console.error (msg);
+    if(state.config.verbose)console.error (err);
+  }
+  else 
+  {
+    if(state.config.verbose)
+    {
+    console.error (msg);
+    throw Error (err);
+    }
+    else 
+    {
+      throw Error (msg);
+    }
+  }
 }
 
 export { writeCssAndHtml, readGlobalCss };

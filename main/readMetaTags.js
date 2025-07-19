@@ -59,6 +59,7 @@ async function readMetaTags(
         lowerCaseTags: false,
         lowerCaseAttributeNames: false
       });
+      
     }catch(err)
     {
       console.error(`[Syntax Error] Failed to parse file: ${filePath}`);

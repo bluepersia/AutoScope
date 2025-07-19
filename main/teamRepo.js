@@ -9,7 +9,10 @@ import {
   addIdToIdCache,
   serializeHtml,
   findHtmlDeps,
-  isSelectorTargetClass
+  isSelectorTargetClass,
+  writeFile,
+  endWrite,
+  prepareWrite
 } from '../shared.js';
 import { writeCssAndHtml } from './conversion.js';
 import { readMetaTags } from './readMetaTags.js';
@@ -94,6 +97,8 @@ async function syncTeamRepo(
   const outputs = [];
 
   const stripData = { htmlDeps: [], reactDeps: [], jsDeps: [] };
+
+  await prepareWrite ('team-sync');
 
   await readAndWriteCss();
 
@@ -442,10 +447,14 @@ function warnRename (hash)
 
       if (extracted.length === 0) continue;
 
-      outputs.push({
+      const raw = extracted.map((e, index) => (index > 0 ? e.raws.before : '') + e.toString() + e.raws.after).join('');
+      const out = state.cssFormatter (raw);
+      await writeFile (outPath, out);
+      
+      /*outputs.push({
         outPath,
-        output: extracted.map((e, index) => (index > 0 ? e.raws.before : '') + e.toString() + e.raws.after).join(''),
-      });
+        output: ,
+      });*/
 
       outputScopes.push({
         scopeSelector,
@@ -503,10 +512,14 @@ function warnRename (hash)
 
         stripData.htmlDeps.push(outPath);
         dom.src = html;
+        const raw = serializeHtml (dom);
+        const out = state.htmlFormatter (raw);
+        await writeFile (outPath, out);
+        /*
         outputs.push({
           outPath,
           output: serializeHtml(dom),
-        });
+        });*/
       }
     }
   }
@@ -546,10 +559,13 @@ function warnRename (hash)
         js.domClones = cloneDeep (js.doms);
         for (const dom of js.domClones) await readAndWriteDom(dom.dom);
 
-        outputs.push({
+        const raw = await writeToASTJs (js);
+        const out = j.filePath.endsWith ('.js') ? await state.jsFormatter (raw) : await state.tsFormatter (raw);
+        writeFile (outPath, out);
+        /*outputs.push({
           outPath,
           output: await writeToASTJs (js),
-        });
+        });*/
       }
     }
   }
@@ -885,8 +901,13 @@ function warnRename (hash)
         for (const dom of ast.doms) readAndWriteDom(dom);
 
         replaceLinkStylesheetsWithImports(ast);
-        const out = await writeToAST(ast);
-        outputs.push({ outPath, output: out });
+        const raw = await writeToAST(ast);
+        const out = raw.endsWith ('.jsx')
+        ? await state.jsxFormatter(raw)
+        : await state.tsxFormatter(raw);
+
+        await writeFile (outPath, out);
+        //outputs.push({ outPath, output: out });
       }
   }
 
@@ -905,7 +926,7 @@ function warnRename (hash)
         await state.tsxFormatter (output) :
         output.endsWith ('.ts') ?
          await state.tsFormatter(output) : output;
-      await fs.promises.writeFile(outPath, out);
+      await writeFile(outPath, out);
     }
   }
 
@@ -913,7 +934,8 @@ function warnRename (hash)
     const data = await fetch('http://localhost:3012/read-team');
   } catch (err) {}
 
-  await download();
+  await endWrite ('team-sync');
+ // await download();
 
   if (stripData.filePath) {
     let json = JSON.stringify(stripData);
@@ -1018,13 +1040,13 @@ async function readTeamIDs() {
 
     await postcss([
       (root) => {
-        root.walkRules((rule) => {
+        root.walkRules(async (rule) => {
           if (rule.selector) {
             const selectors = rule.selector
               .split(',')
               .filter((s) => !s.includes('__'));
 
-            selectors.forEach((selector) => {
+            for (const selector of selectors) {
               const className = selector.replaceAll('.', '');
               //if (state.resolveClses.includes (className))
               //return;
@@ -1070,10 +1092,10 @@ async function readTeamIDs() {
                 if (numberSuffix) {
                   objAdd.id = numberSuffix;
 
-                  addIdToIdCache(scopeName, objAdd);
+                  await addIdToIdCache(scopeName, objAdd);
                 } else if (!hashSuffix) {
                   objAdd.id = 1;
-                  addIdToIdCache(scopeName, objAdd);
+                  await addIdToIdCache(scopeName, objAdd);
                 }
 
                 return;
@@ -1099,7 +1121,7 @@ async function readTeamIDs() {
               const objAdd = { id: numberSuffix || 1, team: true };
 
               addIdToIdCache(scopeName, objAdd);
-            });
+            }
           }
         });
       },

@@ -7,7 +7,7 @@ export default {
   outputDir: 'dist', // This is where the converted files will be created
   dontFlatten: false, // Keep compound selectors rather than automatic BEM-style flattening
   useNumbers: true, // Use numbers (1, 2, 3, 4) instead of hash (3d0ccd)
-  preserveSuffixes: false, //card-2 will always be card-2
+  preserveSuffixes: true, //card-2 will always be card-2
   dontHashFirst: true, // The first scope of a certain type doesn't get an ID or hash
   mergeCss: false, // Merge all the CSS into one file
   teamGit: '', //The git repo of the team/main project (private mode)
