@@ -1,23 +1,7 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
-**This tool has been tested with small tests. It's now being tested on realistic patterns.**
-**Thanks for your patience**
-
+**This tool is still in testing phase**
 [Multi-page website preview](https://designo-website-sl64.vercel.app/)<br>
-
-## Latest update:
-
-1. Atomic writes. All-or-nothing, safer for production.
-2. Errors when CSS imports collide without proper IDs assigned - cancels builds.
-3. Pseudo/combinator/modifier bug fixes.
-
-## Ideas for the future
-
-1. Auto-update CSS imports when moving CSS file.
-2. `npx rename` - rename a block. Auto-updates imports and content project-wide.
-3. `npx promote` - convert element to block. Auto-updates imports and content project-wide.
-   The benefits of these tools would be to make BEM a seamless responsive process, rather than trying to do the impossible and guess the future, leading to premature abstraction, less readable code, etc.
-   A block would simply be a _source of truth_, which you can create or expand at any moment, similar to a JS/TS class, using `Rename Symbol`, etc.
 
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
