@@ -3,9 +3,6 @@
 **This tool is still in testing phase**<br>
 [Multi-page website preview](https://designo-website-sl64.vercel.app/)<br>
 
-[Changelog](https://github.com/bluepersia/AutoScope/raw/master/CHANGELOG.md)<br>
-[Ideas for the future](https://github.com/bluepersia/AutoScope/raw/master/IDEAS.md)
-
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
 
 The aim of this tool:
@@ -14,6 +11,9 @@ The aim of this tool:
 2. For private adoption, reduce collision problems.
 
 Regardless of whether you write Vanilla classes or BEM.
+
+[Changelog](https://github.com/bluepersia/AutoScope/raw/master/CHANGELOG.md)<br>
+[Ideas for the future](https://github.com/bluepersia/AutoScope/raw/master/IDEAS.md)
 
 ## 🛡️ How It Works
 
