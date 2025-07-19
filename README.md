@@ -1,9 +1,9 @@
 ![Tool Logo](https://github.com/bluepersia/AutoScope/raw/master/assets/logo.jpg)
 
-**This tool is still in testing phase**
+**This tool is still in testing phase**<br>
 [Multi-page website preview](https://designo-website-sl64.vercel.app/)<br>
 
-[Changelog](https://github.com/bluepersia/AutoScope/raw/master/CHANGELOG.md)
+[Changelog](https://github.com/bluepersia/AutoScope/raw/master/CHANGELOG.md)<br>
 [Ideas for the future](https://github.com/bluepersia/AutoScope/raw/master/IDEAS.md)
 
 Welcome to AutoScope compiler for CSS, HTML and JavaScript (React is in the works)!
